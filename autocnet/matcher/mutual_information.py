@@ -1,9 +1,11 @@
+from math import floor
+
 import numpy as np
 
 def mi(t1, t2, **kwargs):
     """
     Computes the correlation coefficient between two images using a histogram
-    comparison (Mutual information for joint histograms). The result coefficient
+    comparison (Mutual information for joint histograms). The corr_map coefficient
     will be between 0 and 4
 
     Parameters
@@ -33,7 +35,8 @@ def mi(t1, t2, **kwargs):
     nzs = pxy > 0 # Only non-zero pxy values contribute to the sum
     return np.sum(pxy[nzs] * np.log(pxy[nzs] / px_py[nzs]))
 
-def mutual_information(d_template, s_image, bins=100, func=mi):
+def mutual_information(d_template, s_image, subpixel_size=3, max_scaler=0.2,
+                       bins=100, func=mi):
     """
     Applys the mutual information matcher function over a search image using a
     defined template. Where the search area is 2x the size of the template image
@@ -89,7 +92,38 @@ def mutual_information(d_template, s_image, bins=100, func=mi):
 
     # This is still operating at the pixel scale. Use the template_match_autoreg
     # logic to achieve submpixel weighting.
-    x_offset = max_j - (template_size[1]/2)
-    y_offset = max_i - (template_size[0]/2)
+    y, x = np.unravel_index(np.argmax(corr_map, axis=None), corr_map.shape)
 
-    return x_offset, y_offset, max_corr, corr_map
+    upper = int(2 + floor(subpixel_size / 2))
+    lower = upper - 1
+    # x, y are the location of the upper left hand corner of the template in the image
+    area = corr_map[y-lower:y+upper,
+                    x-lower:x+upper]
+
+    if area.shape != (subpixel_size+2, subpixel_size+2):
+        print("Max correlation is too close to the boundary.")
+        return None, None, 0, None
+
+    # Find the max on the edges, scale just like autoreg (but why?)
+    edge_max = np.max(np.vstack([area[0], area[-1], area[:,0], area[:,-1]]))
+    internal = area[1:-1, 1:-1]
+    mask = (internal > edge_max + max_scaler * (edge_max-max_corr)).flatten()
+
+    empty = np.column_stack([np.repeat(np.arange(0,subpixel_size),subpixel_size),
+                             np.tile(np.arange(0,subpixel_size),subpixel_size),
+                             np.zeros(subpixel_size*subpixel_size)])
+    empty[:,-1] = internal.ravel()
+
+    to_weight = empty[mask, :]
+    # Average is the shift from y, x form
+    average = np.average(to_weight[:,:2], axis=0, weights=to_weight[:,2])
+
+    # The center of the 3x3 window is 1.5,1.5, so the shift needs to be recentered to 0,0
+    y += (subpixel_size/2 - average[0])
+    x += (subpixel_size/2 - average[1])
+
+    # Compute the idealized shift (image center)
+    y -= (s_image.shape[0] / 2) - (d_template.shape[0] / 2)
+    x -= (s_image.shape[1] / 2) - (d_template.shape[1] / 2)
+
+    return float(x), float(y), float(max_corr), corr_map
