@@ -2,41 +2,8 @@ from math import floor
 
 import numpy as np
 
-def mi(t1, t2, **kwargs):
-    """
-    Computes the correlation coefficient between two images using a histogram
-    comparison (Mutual information for joint histograms). The corr_map coefficient
-    will be between 0 and 4
-
-    Parameters
-    ----------
-
-    t1 : ndarray
-         First image to use in the histogram comparison
-
-    t2 : ndarray
-         Second image to use in the histogram comparison
-
-    Returns
-    -------
-
-    : float
-      Correlation coefficient computed between the two images being compared
-      between 0 and 4
-    """
-    hgram, x_edges, y_edges = np.histogram2d(t1.ravel(),t2.ravel(), **kwargs)
-
-    # Convert bins counts to probability values
-    pxy = hgram / float(np.sum(hgram))
-    px = np.sum(pxy, axis=1) # marginal for x over y
-    py = np.sum(pxy, axis=0) # marginal for y over x
-    px_py = px[:, None] * py[None, :] # Broadcast to multiply marginals
-    # Now we can do the calculation using the pxy, px_py 2D arrays
-    nzs = pxy > 0 # Only non-zero pxy values contribute to the sum
-    return np.sum(pxy[nzs] * np.log(pxy[nzs] / px_py[nzs]))
-
 def mutual_information(d_template, s_image, subpixel_size=3, max_scaler=0.2,
-                       bins=100, func=mi):
+                       bins=100, func=None):
     """
     Applys the mutual information matcher function over a search image using a
     defined template. Where the search area is 2x the size of the template image
@@ -69,6 +36,43 @@ def mutual_information(d_template, s_image, subpixel_size=3, max_scaler=0.2,
                Map of corrilation coefficients when comparing the template to
                locations within the search area
     """
+
+    def mutual_information_match(t1, t2, **kwargs):
+        """
+        Computes the correlation coefficient between two images using a histogram
+        comparison (Mutual information for joint histograms). The corr_map coefficient
+        will be between 0 and 4
+
+        Parameters
+        ----------
+
+        t1 : ndarray
+             First image to use in the histogram comparison
+
+        t2 : ndarray
+             Second image to use in the histogram comparison
+
+        Returns
+        -------
+
+        : float
+          Correlation coefficient computed between the two images being compared
+          between 0 and 4
+        """
+        hgram, x_edges, y_edges = np.histogram2d(t1.ravel(),t2.ravel(), **kwargs)
+
+        # Convert bins counts to probability values
+        pxy = hgram / float(np.sum(hgram))
+        px = np.sum(pxy, axis=1) # marginal for x over y
+        py = np.sum(pxy, axis=0) # marginal for y over x
+        px_py = px[:, None] * py[None, :] # Broadcast to multiply marginals
+        # Now we can do the calculation using the pxy, px_py 2D arrays
+        nzs = pxy > 0 # Only non-zero pxy values contribute to the sum
+        return np.sum(pxy[nzs] * np.log(pxy[nzs] / px_py[nzs]))
+        
+    if func == None:
+        func = mutual_information_match
+
     image_size = s_image.shape
     template_size = d_template.shape
 
