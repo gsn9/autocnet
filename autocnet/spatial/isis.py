@@ -308,13 +308,28 @@ def image_to_ground(
     res = point_info(cube_path, sample, line, "image")
 
     if isinstance(sample, (abc.Sequence, np.ndarray)):
-        lons, lats = np.asarray([
-            [r[lontype], r[lattype]] for r in res
-        ]).T
+        lon_list = list()
+        lat_list = list()
+        for r in res:
+            lon_list.append(_get_value(r[lontype]))
+            lat_list.append(_get_value(r[lattype]))
+
+        lons = np.asarray(lon_list)
+        lats = np.asarray(lat_list)
     else:
-        lons, lats = res[lontype].value, res[lattype].value
+        lons = _get_value(res[lontype])
+        lats = _get_value(res[lattype])
 
     return lons, lats
+
+
+def _get_value(obj):
+    """Returns *obj*, unless *obj* is of type pvl.collections.Quantity, in
+    which case, the .value component of the object is returned."""
+    if isinstance(obj, pvl.collections.Quantity):
+        return obj.value
+    else:
+        return obj
 
 
 def ground_to_image(cube_path, lon, lat):

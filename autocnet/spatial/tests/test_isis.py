@@ -118,26 +118,62 @@ class TestISIS(unittest.TestCase):
 
     def test_image_to_ground(self):
         lon, lat = si.image_to_ground(self.cube, 20, 20)
-        self.assertEqual(274.14948072713, lon)
-        self.assertEqual(28.537396673529, lat)
+        x = 274.14948
+        y = 28.537396
+        self.assertAlmostEqual(x, lon, places=5)
+        self.assertAlmostEqual(y, lat, places=5)
+
+        lons, lats = si.image_to_ground(
+            self.cube, np.array([10, 20]), np.array([10, 20])
+        )
+        npt.assert_allclose(np.array([274.14961, x]), lons, rtol=1e-05)
+        npt.assert_allclose(np.array([28.53731, y]), lats, rtol=1e-05)
+
+        lon, lat = si.image_to_ground(self.map, 20, 20)
+        x = 274.13914
+        y = 28.57541
+        self.assertAlmostEqual(x, lon, places=5)
+        self.assertAlmostEqual(y, lat, places=5)
 
         lons, lats = si.image_to_ground(
             self.map, np.array([10, 20]), np.array([10, 20])
         )
-        npt.assert_allclose(np.array([274.13902925, 274.13913915]), lons)
-        npt.assert_allclose(np.array([28.57551247, 28.57541596]), lats)
+        npt.assert_allclose(np.array([274.13903, x]), lons, rtol=1e-05)
+        npt.assert_allclose(np.array([28.57551, y]), lats, rtol=1e-05)
 
     def test_ground_to_image(self):
+        lon = 274.14948072713
+        lat = 28.537396673529
+        goal_samp = 20.001087
+        goal_line = 20.004109
         sample, line = si.ground_to_image(
-            self.cube, 274.14948072713, 28.537396673529
+            self.cube, lon, lat
         )
-        self.assertEqual(20.001087366213, sample)
-        self.assertEqual(20.004109124452, line)
+        self.assertAlmostEqual(goal_samp, sample, places=6)
+        self.assertAlmostEqual(goal_line, line, places=6)
+
+        samples, lines = si.ground_to_image(
+            self.cube,
+            np.array([lon, 274.1495]),
+            np.array([lat, 28.5374])
+        )
+        npt.assert_allclose(np.array([goal_samp, 18.241668]), samples)
+        npt.assert_allclose(np.array([goal_line, 20.145382]), lines)
+
+        lon = 274.13903475
+        lat = 28.57550764
+        goal_samp = 10.5001324
+        goal_line = 10.49999466
+        sample, line = si.ground_to_image(
+            self.map, lon, lat
+        )
+        self.assertAlmostEqual(goal_samp, sample)
+        self.assertAlmostEqual(goal_line, line)
 
         samples, lines = si.ground_to_image(
             self.map,
-            np.array([274.13903475, 274.14948072713]),
-            np.array([28.57550764, 28.57541113])
+            np.array([lon, 274.14948072713]),
+            np.array([lat, 28.57541113])
         )
-        npt.assert_allclose(np.array([10.5001324, 961.03569217]), samples)
-        npt.assert_allclose(np.array([10.49999466, 20.50009032]), lines)
+        npt.assert_allclose(np.array([goal_samp, 961.03569217]), samples)
+        npt.assert_allclose(np.array([goal_line, 20.50009032]), lines)
