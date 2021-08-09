@@ -8,7 +8,8 @@ Working With ISIS Control Networks
 .. toctree::
    :maxdepth: 1
 
-    Ingesting from ISIS control network<isis_ingest/from_cnet.ipynb>
+    Ingesting from ISIS control network<isis_ingestion/from_cnet.ipynb>
+    Check for empty overlaps and overlap connectivity<isis_ingestion/overlap_check.ipynb>
     Using outlier detection to check for bad measures<outlier_detection/outlier_detection.ipynb>
 
 
@@ -31,9 +32,9 @@ Working With Apollo Pan
     Creating a Control Network <apollopan/9. Creating a Control Network.ipynb>
     Advanced: Extending the CandidateGraph<apollopan/Advanced 1. Extending the CandidateGraph.ipynb>
 
-Coupled Decomposition
----------------------
+Change Detection
+----------------
 .. toctree::
    :maxdepth: 1
 
-   Apollo Metric Coupled Decomposition<coupleddecomposition/CoupledDecomposition.ipynb>
+   Change detection examples<change_detection/Change_Detection.ipynb>
