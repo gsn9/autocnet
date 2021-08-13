@@ -18,8 +18,8 @@ class JsonEncoder(json.JSONEncoder):
         if isinstance(obj, bytes):
             return obj.decode('utf-8')
         if isinstance(obj, set):
-            return list(obj)
-        if isinstance(obj,  shapely.geometry.base.BaseGeometry):
+            return sorted(list(obj))
+        if isinstance(obj, shapely.geometry.base.BaseGeometry):
             return obj.wkt
         if callable(obj):
             return encodebytes(dill.dumps(obj)).decode()

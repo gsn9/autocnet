@@ -55,7 +55,6 @@ def check_geom_func(func):
 
     raise Exception(f"{func} not a valid geometry function.")
 
-
 def check_match_func(func):
     match_funcs = {
         "classic": subpixel_template_classic,
@@ -71,7 +70,6 @@ def check_match_func(func):
         return match_funcs[func]
 
     raise Exception(f"{func} not a valid matching function.")
-
 
 # TODO: look into KeyPoint.size and perhaps use to determine an appropriately-sized search/template.
 def _prep_subpixel(nmatches, nstrengths=2):
@@ -141,7 +139,6 @@ def check_image_size(imagesize):
     y = floor(y/2)
     return x,y
 
-
 def clip_roi(img, center_x, center_y, size_x=200, size_y=200, dtype="uint64"):
     """
     Given an input image, clip a square region of interest
@@ -198,7 +195,6 @@ def clip_roi(img, center_x, center_y, size_x=200, size_y=200, dtype="uint64"):
         except:
             return None, 0, 0
     return subarray, axr, ayr
-
 
 def subpixel_phase(sx, sy, dx, dy,
                    s_img, d_img,
@@ -272,7 +268,6 @@ def subpixel_phase(sx, sy, dx, dy,
     dy = d_roi.y - shift_y
 
     return dx, dy, error, None
-
 
 def subpixel_transformed_template(sx, sy, dx, dy,
                                   s_img, d_img,
@@ -446,7 +441,6 @@ def subpixel_transformed_template(sx, sy, dx, dy,
 
     return dx, dy, metrics, corrmap
 
-
 def subpixel_template_classic(sx, sy, dx, dy,
                               s_img, d_img,
                               image_size=(251, 251),
@@ -495,16 +489,24 @@ def subpixel_template_classic(sx, sy, dx, dy,
 
     image_size = check_image_size(image_size)
     template_size = check_image_size(template_size)
-    print('source image avg: ', s_img.mean())
-    print('dest image avg: ', d_img.mean())
+
+    # In ISIS source image is the search and destination image is the pattern.
+    # In ISIS the search is CTX and the pattern is THEMIS
+    # So the data that are being used are swapped between autocnet and ISIS.
+    
+    print('source image avg: ', s_img.mean())  #THEMIS
+    print('dest image avg: ', d_img.mean())  # CTX
 
     s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
     d_roi = roi.Roi(d_img, dx, dy, size_x=template_size[0], size_y=template_size[1])
 
+    print('Source: ', sx, sy, d_roi.x, d_roi.y)
+    print('Destination ',dx, dy, s_roi.x, s_roi.y )
+
     print('d shape', d_roi.clip().shape)
     print('d mean: ', d_roi.clip().mean())
     print(f'd mm: {d_roi.clip().min()} {d_roi.clip().max()}')
-    print(f'{len(isis.get_isis_special_pixels(d_roi.clip()))} chip sps : ', isis.get_isis_special_pixels(d_roi.clip()))
+    #print(f'{len(isis.get_isis_special_pixels(d_roi.clip()))} chip sps : ', isis.get_isis_special_pixels(d_roi.clip()))
 
     s_image = s_roi.clip()
     d_template = d_roi.clip()
@@ -512,21 +514,21 @@ def subpixel_template_classic(sx, sy, dx, dy,
     print('s shape', s_image.shape)
     print('s mean: ', s_image.mean())
     print(f's mm: {s_image.min()} {s_image.max()}')
-    print(f'{len(isis.get_isis_special_pixels(s_image))} chip sps: ', isis.get_isis_special_pixels(s_image))
+    #print(f'{len(isis.get_isis_special_pixels(s_image))} chip sps: ', isis.get_isis_special_pixels(s_image))
 
     if d_roi.variance == 0:
+        warnings.warn('Input ROI has no variance.')
         return [None] * 4
 
     if (s_image is None) or (d_template is None):
         return None, None, None, None
 
-    shift_x, shift_y, metrics, corrmap = func(d_template, s_image, **kwargs)
+    shift_x, shift_y, metrics, corrmap = func(d_template.astype('float32'), s_image.astype('float32'), **kwargs)
 
+    # Apply the shift and return
     dx = d_roi.x - shift_x
     dy = d_roi.y - shift_y
-
     return dx, dy, metrics, corrmap
-
 
 def subpixel_template(sx, sy, dx, dy,
                       s_img, d_img,
@@ -645,7 +647,6 @@ def subpixel_template(sx, sy, dx, dy,
 
     return dx, dy, metrics, corrmap
 
-
 def subpixel_ciratefi(sx, sy, dx, dy, s_img, d_img, search_size=251, template_size=51, **kwargs):
     """
     Uses a pattern-matcher on subsets of two images determined from the passed-in keypoints and optional sizes to
@@ -696,7 +697,6 @@ def subpixel_ciratefi(sx, sy, dx, dy, s_img, d_img, search_size=251, template_si
     dx += (x_offset + t_roi.axr)
     dy += (y_offset + t_roi.ayr)
     return dx, dy, strength
-
 
 def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(51, 51), reduction=11, convergence_threshold=1.0, max_dist=50, **kwargs):
     """
@@ -769,7 +769,6 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(51, 51), reduction=11, c
 
     return dx, dy, metrics
 
-
 def estimate_affine_transformation(destination_coordinates, source_coordinates):
     """
     Given a set of destination control points compute the affine transformation
@@ -793,7 +792,6 @@ def estimate_affine_transformation(destination_coordinates, source_coordinates):
 
     return tf.estimate_transform('affine', destination_coordinates, source_coordinates)
 
-
 def geom_match_simple(base_cube,
                        input_cube,
                        bcenter_x,
@@ -802,8 +800,8 @@ def geom_match_simple(base_cube,
                        size_y=60,
                        match_func="classic",
                        match_kwargs={"image_size":(101,101), "template_size":(31,31)},
-                       phase_kwargs=None,
-                       verbose=True):
+                       preprocess=None,
+                       verbose=False):
     """
     Propagates a source measure into destination images and then perfroms subpixel registration.
     Measure creation is done by projecting the (lon, lat) associated with the source measure into the
@@ -891,7 +889,8 @@ def geom_match_simple(base_cube,
     base_corners = [(base_startx,base_starty),
                     (base_startx,base_stopy),
                     (base_stopx,base_stopy),
-                    (base_stopx,base_starty)]
+                    (base_stopx,base_starty),
+                    (bcenter_x, bcenter_y)]
 
     dst_corners = []
     for x,y in base_corners:
@@ -900,19 +899,14 @@ def geom_match_simple(base_cube,
             dst_corners.append(
                 spatial.isis.ground_to_image(input_cube.file_name, lon, lat)
             )
-        except CalledProcessError as e:
-            if 'Requested position does not project in camera model' in e.stderr:
-                print(f'Skip geom_match; Region of interest corner located at ({lon}, {lat}) does not project to image {input_cube.base_name}')
-                return None, None, None, None, None
+        except: pass
+
+    if len(dst_corners) < 3:
+        raise ValueError('Unable to find enough points to compute an affine transformation.')
 
     base_gcps = np.array([*base_corners])
 
     dst_gcps = np.array([*dst_corners])
-
-    start_x = dst_gcps[:,0].min()
-    start_y = dst_gcps[:,1].min()
-    stop_x = dst_gcps[:,0].max()
-    stop_y = dst_gcps[:,1].max()
 
     affine = tf.estimate_transform('affine', np.array([*base_gcps]), np.array([*dst_gcps]))
     t2 = time.time()
@@ -942,9 +936,12 @@ def geom_match_simple(base_cube,
     # These parameters seem to work best, should pass as kwargs later
     print('dst_arr mean: ', dst_arr.mean())
     print(f'dst_arr mm: {dst_arr.min()} {dst_arr.max()}')
-    print(f'special pixels: ', isis.get_isis_special_pixels(dst_arr))
+    #print(f'special pixels: ', isis.get_isis_special_pixels(dst_arr))
     
-    restemplate = match_func(bcenter_x, bcenter_y, bcenter_x, bcenter_y, bytescale(base_arr, cmin=0), bytescale(dst_arr, cmin=0), **match_kwargs)
+    if preprocess:
+        base_arr, dst_arr = preprocess(base_arr, dst_arr)
+
+    restemplate = match_func(bcenter_x, bcenter_y, bcenter_x, bcenter_y, base_arr, dst_arr, **match_kwargs)
     t4 = time.time()
     print(f'Matching took {t4-t3} seconds')
 
@@ -1445,6 +1442,7 @@ def subpixel_register_point(pointid,
                             match_kwargs={},
                             use_cache=False,
                             verbose=False,
+                            chooser='subpixel_register_point',
                             **kwargs):
 
     """
@@ -1542,7 +1540,7 @@ def subpixel_register_point(pointid,
 
         destination_node = nodes[measure.imageid]
 
-        print('geom_match image:', res.path)
+        print('geom_match image:', destination_node['image_path'])
         print('geom_func', geom_func)
         try:
             # new geom_match has a incompatible API, until we decide on one, put in if.

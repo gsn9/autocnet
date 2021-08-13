@@ -102,7 +102,6 @@ def get_nodata_bounds(arr):
     # subtract 1 to exclude the special pixel
     x_dist = abs(cx - nearx) - 1
     y_dist = abs(cy - neary) - 1
-    print(x_dist, y_dist)
 
     # left_x, right_x, top_y, bottom_y
     left_x = cx - x_dist
@@ -196,12 +195,6 @@ def point_info(
             f"numbers, they were: {x} and {y}"
         )
 
-    if point_type == "image":
-        # convert to ISIS pixels
-        for i in range(len(x_coords)):
-            x_coords[i] += 0.5
-            y_coords[i] += 0.5
-
     results = []
     if pvl.load(cube_path).get("IsisCube").get("Mapping"):
         # We have a projected image, and must use mappt
@@ -215,16 +208,20 @@ def point_info(
                     coordsys="UNIVERSAL"
                 ),
                 "image": dict(
-                    sample=xx,
-                    line=yy,
+                    # Convert PLIO pixels to ISIS pixels
+                    sample=xx+0.5,
+                    line=yy+0.5
                 )
             }
             for k in mappt_args.keys():
                 mappt_args[k].update(mappt_common_args)
+            mapres = pvl.loads(isis.mappt(cube_path, **mappt_args[point_type]).stdout)["Results"]
+            
+            # convert from ISIS pixels to PLIO pixels
+            mapres['Sample'] = mapres['Sample'] - 0.5
+            mapres['Line'] = mapres['Line'] - 0.5
 
-            results.append(pvl.loads(
-                isis.mappt(cube_path, **mappt_args[point_type]).stdout
-            )["Results"])
+            results.append(mapres)
     else:
         # Not projected, use campt
         if point_type == "ground":
@@ -233,7 +230,7 @@ def point_info(
             p_list = [f"{lat}, {lon}" for lon, lat in zip(x_coords, y_coords)]
         else:
             p_list = [
-                f"{samp}, {line}" for samp, line in zip(x_coords, y_coords)
+                f"{samp+0.5}, {line+0.5}" for samp, line in zip(x_coords, y_coords)
             ]
 
         # ISIS's campt needs points in a file

@@ -2,9 +2,10 @@ from math import floor
 import cv2
 import numpy as np
 from scipy.ndimage.interpolation import zoom
+from scipy.ndimage.measurements import center_of_mass
 
 
-def pattern_match_autoreg(template, image, subpixel_size=3, max_scaler=0.2, metric=cv2.TM_CCORR_NORMED):
+def pattern_match_autoreg(template, image, subpixel_size=3, metric=cv2.TM_CCOEFF_NORMED):
     """
     Call an arbitrary pattern matcher using a subpixel approach where a center of gravity using
     the correlation coefficients are used for subpixel alignment.
@@ -36,47 +37,50 @@ def pattern_match_autoreg(template, image, subpixel_size=3, max_scaler=0.2, metr
                The strength of the correlation in the range [-1, 1].
     """
 
+    # Apply the pixel scale template matcher
     result = cv2.matchTemplate(image, template, method=metric)
 
+    # Find the 'best' correlation
     if metric == cv2.TM_SQDIFF or metric == cv2.TM_SQDIFF_NORMED:
         y, x = np.unravel_index(np.argmin(result, axis=None), result.shape)
     else:
         y, x = np.unravel_index(np.argmax(result, axis=None), result.shape)
     max_corr = result[(y,x)]
-
+    
+    # Get the area around the best correlation; the surface
     upper = int(2 + floor(subpixel_size / 2))
     lower = upper - 1
     # x, y are the location of the upper left hand corner of the template in the image
     area = result[y-lower:y+upper,
                   x-lower:x+upper]
 
+    # If the area is not square and large enough, this method should fail
     if area.shape != (subpixel_size+2, subpixel_size+2):
         print("Max correlation is too close to the boundary.")
         return None, None, 0, None
 
-    # Find the max on the edges, scale just like autoreg (but why?)
-    edge_max = np.max(np.vstack([area[0], area[-1], area[:,0], area[:,-1]]))
-    internal = area[1:-1, 1:-1]
-    mask = (internal > edge_max + max_scaler * (edge_max-max_corr)).flatten()
-
-    empty = np.column_stack([np.repeat(np.arange(0,subpixel_size),subpixel_size),
-                             np.tile(np.arange(0,subpixel_size),subpixel_size),
-                             np.zeros(subpixel_size*subpixel_size)])
-    empty[:,-1] = internal.ravel()
-
-    to_weight = empty[mask, :]
-    # Average is the shift from y, x form
-    average = np.average(to_weight[:,:2], axis=0, weights=to_weight[:,2])
-
-    # The center of the 3x3 window is 1.5,1.5, so the shift needs to be recentered to 0,0
-    y += (subpixel_size/2 - average[0])
-    x += (subpixel_size/2 - average[1])
-
+    cmass = center_of_mass(area)
+    subpixel_y_shift = subpixel_size - 1 - cmass[0]
+    subpixel_x_shift = subpixel_size - 1 - cmass[1]
+    
+    # Apply the subpixel shift to the whole pixel shifts computed above
+    y += subpixel_y_shift
+    x += subpixel_x_shift
+    
     # Compute the idealized shift (image center)
-    y -= (image.shape[0] / 2) - (template.shape[0] / 2)
-    x -= (image.shape[1] / 2) - (template.shape[1] / 2)
-
-    return float(x), float(y), float(max_corr), result
+    ideal_y = image.shape[0] / 2
+    ideal_x = image.shape[1] / 2
+    
+    #Compute the shift from the template upper left to the template center
+    y += (template.shape[0] / 2)
+    x += (template.shape[1] / 2)
+    
+    print('Results after shifting from the UL corner to the center of the template: ', y, x)
+    
+    x -= ideal_x
+    y -= ideal_y
+    
+    return x, y, max_corr, result
 
 def pattern_match(template, image, upsampling=16, metric=cv2.TM_CCOEFF_NORMED, error_check=False):
     """

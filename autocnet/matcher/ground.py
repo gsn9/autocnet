@@ -28,6 +28,7 @@ def propagate_ground_point(point,
                            cost=lambda x, y: y == np.max(x),
                            threshold=0.01,
                            ncg=None,
+                           preprocess=None,
                            Session=None):
     print(f'Attempting to propagate point {point.id}.')
 
@@ -47,12 +48,10 @@ def propagate_ground_point(point,
     lon = point.geom.x
     lat = point.geom.y
 
-    p = Point(lon, lat)  # lon, lat
-    new_measures = []
-
     # list of matching results in the format:
     # [measure_index, x_offset, y_offset, offset_magnitude]
-    match_results = []
+    best_correlation = -np.inf
+    best_match = None
     for _, image in images.iterrows():
         # When grounding to THEMIS the df has a PATH to the QUAD
         dest_image = GeoDataset(image["path"])
@@ -65,56 +64,29 @@ def propagate_ground_point(point,
             x,y, dist, metrics, corrmap = geom_match_simple(base_image, dest_image, sx, sy, 25, 25, \
                     match_func = match_func, \
                     match_kwargs=match_kwargs, \
+                    preprocess=preprocess,
                     verbose=verbose)
         except Exception as e:
-            raise Exception(e)
-            match_results.append(e)
+            print(e)
             continue
-
-        # Element 0 of each list is an id. We don't need this id because of how this was refactored to work
-        # in parallel. If we set to none though, the check below fails because one of the elements is None...
-        match_results.append(['foo',
-                              x,
-                              y,
-                              metrics,
-                              dist,
-                              corrmap,
-                              path,
-                              image["path"],
-                              image['id'],
-                              image['serial']])
-    print('Found the following matches: ', len(match_results))
-    print("MATCH RESULTS: ", match_results)
-    # get best offsets
-    match_results = np.asarray([res for res in match_results if isinstance(res, list) and all(r is not None for r in res)])
-    if match_results.shape[0] == 0:
-        print('No matches found')
-        # no matches
-        return new_measures
-
-    # column index 3 is the metric returned by the geom matcher
-    best_results = np.asarray([match for match in match_results if cost(match_results[:,3], match[3])])
-    print('BEST: ', best_results)
-    if best_results.shape[0] == 0:
-        # no matches satisfying cost
-        print("No best results.")
-        return new_measures
-
-    if verbose:
-        print("match_results final length: ", len(match_results))
-        print("best_results length: ", len(best_results))
-        print("Full results: ", best_results)
-        print("Winning CORRs: ", best_results[:,3], "Base Pixel shifts: ", best_results[:,4])
-        print("Base Images: ", best_results[:,6], "CTX images:", best_results[:,7])
-        print("Base Sample: ", sx, "CTX Samples: ", best_results[:,1])
-        print("Base Line: ", sy, "CTX Lines: ", best_results[:,2])
-        print('\n')
-
-    # if the single best results metric (returned by geom_matcher) is None
-    if len(best_results[:,3])==1 and best_results[:,3][0] is None:
-        print('Returning without a result as best is None.')
-        return new_measure
-
+        
+        if x is None:
+            print(f'Match returned None. Unable to match the ground point into image {image["path"]}.')
+            continue
+        
+        current_cost = cost(dist, metrics)
+        if current_cost > best_correlation and current_cost >= threshold:
+            print(f'Found a match with correlation: {metrics}, shift distance: {dist}, and cost {current_cost} ', )
+            best_correlation = current_cost
+            best_match = [x, y, metrics, dist, corrmap, path, image['path'], image['id'], image['serial']]
+        else:
+            print(f'Found a match, but that match is either less than the threshold or worse than the current best.')
+            print(f'Found a match with correlation: {metrics}, shift distance: {dist}, and cost {current_cost} ', )
+    
+    if best_match is None:
+        print('Unable to propagate this ground point into any images.')
+        return
+    
     dem = ncg.dem
     config = ncg.config
 
@@ -132,11 +104,12 @@ def propagate_ground_point(point,
                          semi_major, semi_minor,
                          'latlon', 'geocent')
 
-    row = best_results[0]
-    sample  = row[1]
-    line = row[2]
+    row = best_match
+    sample  = float(row[0])
+    line = float(row[1])
 
     # Create the point
+    # Question - do we need to get the z from the ground source?
     point_geom = Point(x,y,z)
     cam_type = 'isis'
     point = Points(apriori=point_geom,
@@ -147,14 +120,14 @@ def propagate_ground_point(point,
 
     # Add the measure that was the best match.
     # Set the line/sample and aprioriline/apriorisample to be identical.
-    point.measures.append(Measures(sample=row[1],
-                                   line=row[2],
-                                   apriorisample=row[1],
-                                   aprioriline=row[2],
-                                   imageid=row[8],
-                                   serial=row[9],
+    point.measures.append(Measures(sample=sample,
+                                   line=line,
+                                   apriorisample=sample,
+                                   aprioriline=line,
+                                   imageid=row[7],
+                                   serial=row[8],
                                    measuretype=2,
-                                   weight=row[3],  # metric
+                                   weight=float(row[2]),  # metric
                                    choosername='propagate_ground_point'))
 
     for _, image in images.iterrows():
@@ -165,18 +138,18 @@ def propagate_ground_point(point,
         if cam_type == "isis":
             try:
                 sample, line = isis.ground_to_image(image["path"], lon_oc, lat_oc)
-            except ProcessError as e:
+            except ValueError as e:
                 if 'Requested position does not project in camera model' in e.stderr:
                     print(f'interesting point ({lon_oc},{lat_oc}) does not project to image {images["image_path"]}')
                     continue
 
-        if image['id'] == best_results[0][8]:
+        if image['id'] == best_match[7]:
             continue  # The measures was already added above, simply update the apriori line/sample
 
-        point.measures.append(Measures(sample=sample,
-                                        line=line,
-                                        apriorisample=sample,
-                                        aprioriline=line,
+        point.measures.append(Measures(sample=float(sample),
+                                        line=float(line),
+                                        apriorisample=float(sample),
+                                        aprioriline=float(line),
                                         imageid=image['id'],
                                         serial=image['serial'],
                                         measuretype=3,
@@ -231,7 +204,7 @@ def find_most_interesting_ground(apriori_lon_lat,
     image = roi.Roi(ground_mosaic, sample, line, size_x=size, size_y=size)
     image_roi = image.clip(dtype=base_dtype)
 
-    interesting = extract_most_interesting(bytescale(image_roi),  extractor_parameters={'nfeatures':30})
+    interesting = extract_most_interesting(image_roi,  extractor_parameters={'nfeatures':30})
 
     if interesting is None:
         warnings.warn('No interesting feature found. This is likely caused by either large contiguous no data areas in the base or a mismatch in the base_dtype.')

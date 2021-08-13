@@ -2064,7 +2064,7 @@ class NetworkCandidateGraph(CandidateGraph):
                 else:
                     continue
 
-    def add_from_remote_database(self, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
+    def add_from_remote_database(self, source_db_config, path=None,  query_string='SELECT * FROM public.images LIMIT 10'):
         """
         This is a constructor that takes an existing database containing images and sensors,
         copies the selected rows into the project specified in the autocnet_config variable,
@@ -2089,7 +2089,8 @@ class NetworkCandidateGraph(CandidateGraph):
                The PATH to which images in the database specified in the config
                will be copied to. This method duplicates the data and copies it
                to a user defined PATH to avoid issues with updating image ephemeris
-               across projects.
+               across projects. The default PATH is (None), meaning the data will
+               not be copied.
 
         query_string : str
                        An optional string to select a subset of the images in the
@@ -2130,7 +2131,8 @@ class NetworkCandidateGraph(CandidateGraph):
         sourcesession.close()
 
         # Create the graph, copy the images, and compute the overlaps
-        self.copy_images(path)
+        if path:
+            self.copy_images(path)
         self.from_database()
         self._execute_sql(compute_overlaps_sql)
 

@@ -7,7 +7,7 @@ from sqlalchemy.sql.expression import bindparam
 from autocnet.io.db.model import Points, Measures
 from autocnet.utils.serializers import object_hook
 
-def watch_insert_queue(queue, queue_name, counter_name, engine, stop_event):
+def watch_insert_queue(queue, queue_name, counter_name, engine, stop_event, sleep_time=5):
     """
     A worker process to be launched in a thread that will asynchronously insert or update 
     objects in the Session using dicts pulled from a redis queue. Using this queuing approach
@@ -98,9 +98,9 @@ def watch_insert_queue(queue, queue_name, counter_name, engine, stop_event):
                 measures = [measure for sublist in measures for measure in sublist]
                 conn.execute(
                     insert(Measures.__table__), measures)
-        time.sleep(5)
+        time.sleep(sleep_time)
 
-def watch_update_queue(queue, queue_name, counter_name, engine, stop_event):
+def watch_update_queue(queue, queue_name, counter_name, engine, stop_event, sleep_time=5):
     """
     A worker process to be launched in a thread that will asynchronously insert or update 
     objects in the Session using dicts pulled from a redis queue. Using this queuing approach
@@ -173,4 +173,4 @@ def watch_update_queue(queue, queue_name, counter_name, engine, stop_event):
                     stmt, measures
                 )
 
-    time.sleep(5)
+    time.sleep(sleep_time)

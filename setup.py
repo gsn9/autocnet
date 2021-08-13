@@ -23,7 +23,7 @@ def setup_package():
 
     setup(
         name = "autocnet",
-        version = '0.5.0',
+        version = '0.6.0',
         author = "Jay Laura",
         author_email = "jlaura@usgs.gov",
         description = ("I/O API to support planetary data formats."),

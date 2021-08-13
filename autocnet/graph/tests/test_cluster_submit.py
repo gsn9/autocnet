@@ -1,7 +1,6 @@
 import json
 from unittest.mock import patch
 
-import fakeredis
 import numpy as np
 import pytest
 
@@ -17,10 +16,6 @@ def args():
     arg_dict = {'working_queue':'working',
                 'processing_queue':'processing'}
     return arg_dict
-            
-@pytest.fixture
-def queue():
-    return fakeredis.FakeStrictRedis()
 
 @pytest.fixture
 def simple_message():
