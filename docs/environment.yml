@@ -1,0 +1,12 @@
+name: autocnet
+channels:
+  - conda-forge
+  - default
+
+dependencies:
+  - cmake
+  - nbsphinx
+  - networkx
+  - sphinx
+  - sqlalchemy
+  - yaml

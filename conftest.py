@@ -1,6 +1,7 @@
 import os
 from unittest.mock import Mock, MagicMock, PropertyMock
 
+import fakeredis
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -13,6 +14,11 @@ from autocnet.graph.node import Node
 from autocnet.io.db import model
 
 from plio.io.io_gdal import GeoDataset
+
+@pytest.fixture
+def queue():
+    return fakeredis.FakeStrictRedis()
+
 
 @pytest.fixture(scope='session')
 def candidategraph(node_a, node_b, node_c):

@@ -6,7 +6,7 @@ import numpy as np
 import shapely.wkb as swkb
 from plio.io import io_controlnetwork as cnet
 from autocnet.io.db.model import Measures
-
+from autocnet.spatial.isis import isis2np_types
 
 def db_to_df(engine, sql = """
 SELECT measures."pointid",
@@ -56,6 +56,8 @@ ORDER BY measures."pointid", measures."id";
         sql : str
               The sql query to execute in the database.
         """
+        print(sql)
+        
         df = pd.read_sql(sql, engine)
 
         # measures.id DB column was read in to ensure the proper ordering of DF
@@ -189,12 +191,7 @@ def null_measure_ignore(point, size_x, size_y, valid_tol, verbose=False, ncg=Non
 
     if not ncg.Session:
         raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
-
-    isis2np_types = {
-            "UnsignedByte" : "uint8",
-            "SignedWord" : "int16",
-            "Real" : "float64"}
-
+    
     resultlog = []
     with ncg.session_scope() as session:
         pid = point.id

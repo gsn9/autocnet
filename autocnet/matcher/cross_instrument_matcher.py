@@ -1,52 +1,22 @@
-from shapely.geometry import MultiPoint
 from plio.io.io_gdal import GeoDataset
 import numpy as np
-import matplotlib.pyplot as plt
-
-import ctypes
-import enum
-import glob
-import json
 import os
 import os.path
-import socket
-from ctypes.util import find_library
 
 import pandas as pd
-import scipy
-from sqlalchemy import (Boolean, Column, Float, ForeignKey, Integer,
-                        LargeBinary, String, UniqueConstraint, create_engine,
-                        event, orm, pool)
-from sqlalchemy.ext.declarative import declarative_base
 
 import geopandas as gpd
-import plio
-import pvl
-import pyproj
-import pysis
-import cv2
 
-from gdal import ogr
-
-import geoalchemy2
-from geoalchemy2 import Geometry, WKTElement
-from geoalchemy2.shape import to_shape
 from geoalchemy2 import functions
 
-from knoten import csm
 
-from plio.io.io_controlnetwork import from_isis, to_isis
 
 from shapely import wkt
-from shapely.geometry.multipolygon import MultiPolygon
 from shapely.geometry import Point
-
-from plurmy import Slurm
 
 from autocnet.matcher.subpixel import check_match_func
 from autocnet.io.db.model import Images, Points, Measures, JsonEncoder
 from autocnet.cg.cg import distribute_points_in_geom, xy_in_polygon
-from autocnet.io.db.connection import new_connection
 from autocnet.spatial import isis
 from autocnet.transformation.spatial import reproject, oc2og
 from autocnet.matcher.cpu_extractor import extract_most_interesting
@@ -112,12 +82,12 @@ def generate_ground_points(Session, ground_mosaic, nspts_func=lambda x: int(roun
         if linessamples is None:
             print('unable to find point in ground image')
             continue
-        line = linessamples[0].get('Line')
-        sample = linessamples[0].get('Sample')
+        line = linessamples.get('Line')
+        sample = linessamples.get('Sample')
 
         oldpoint = isis.point_info(ground_mosaic.file_name, sample, line, 'image')
-        op = Point(oldpoint[0].get('PositiveEast360Longitude'),
-                   oldpoint[0].get('PlanetocentricLatitude'))
+        op = Point(oldpoint.get('PositiveEast360Longitude'),
+                   oldpoint.get('PlanetocentricLatitude'))
 
 
         image = roi.Roi(ground_mosaic, sample, line, size_x=size[0], size_y=size[1])
@@ -132,8 +102,8 @@ def generate_ground_points(Session, ground_mosaic, nspts_func=lambda x: int(roun
         newline = top_y + interesting.y
 
         newpoint = isis.point_info(ground_mosaic.file_name, newsample, newline, 'image')
-        p = Point(newpoint[0].get('PositiveEast360Longitude'),
-                  newpoint[0].get('PlanetocentricLatitude'))
+        p = Point(newpoint.get('PositiveEast360Longitude'),
+                  newpoint.get('PlanetocentricLatitude'))
 
         if not (xy_in_polygon(p.x, p.y, fp_poly)):
                 print('Interesting point not in mosaic area, ignore')
@@ -193,8 +163,8 @@ def propagate_point(Session,
                               'pgbouncer_port':6543,
                               'name':'somename'}
 
-    dem       : plio.io.io_gdal.GeoDataset
-                digital elevation model of target body
+    dem       : surface
+                surface model of target body
 
     lon       : np.float
                 longitude of point you want to project
@@ -321,8 +291,7 @@ def propagate_point(Session,
     if len(best_results[:,3])==1 and best_results[:,3][0] is None:
         return new_measures
 
-    px, py = dem.latlon_to_pixel(lat, lon)
-    height = dem.read_array(1, [px, py, 1, 1])[0][0]
+    height = dem.get_height(lat, lon)
 
     semi_major = config['spatial']['semimajor_rad']
     semi_minor = config['spatial']['semiminor_rad']
@@ -380,8 +349,8 @@ def propagate_control_network(Session,
                               'pgbouncer_port':6543,
                               'name':'somename'}
 
-    dem       : plio.io.io_gdal.GeoDataset
-                Digital elevation model of target body
+    dem       : surface
+                surface model of target body
 
     base_cnet : pd.DataFrame
                 Dataframe representing the points you want to propagate. Must contain 'line', 'sample' location of
@@ -467,9 +436,9 @@ def propagate_control_network(Session,
         spatial_setSRID = functions.ST_SetSRID(spatial_point, lat_srid)
         spatial_buffer = functions.ST_Buffer(spatial_setSRID, 10e-10)
         spatial_intersects = functions.ST_Intersects(Points.geom, spatial_buffer)
-        
+
         res = session.query(Points).filter(spatial_intersects).all()
-        
+
         if len(res) > 1:
             warnings.warn(f"There is more than one point at lon: {lon}, lat: {lat}")
 

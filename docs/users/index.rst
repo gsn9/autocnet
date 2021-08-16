@@ -3,3 +3,4 @@
 
    installation
    tutorials/index
+   workshops/index

@@ -3,23 +3,24 @@ import pytest
 import unittest
 from .. import naive_template
 import numpy as np
+import cv2
 
 class TestNaiveTemplateAutoReg(unittest.TestCase):
 
     def setUp(self):
         self._test_image = np.array(((0, 0, 0, 0, 0, 0, 0, 0, 0),
-                       (0, 0, 0, 0, 0, 0, 0, 0, 0),
-                       (0, 0, 0, 0, 0, 0, 0, 0, 0),
-                       (0, 0, 0, 0, 1, 1, 0, 0, 0),
-                       (0, 0, 0, 0, 0, 1, 0, 0, 0),
-                       (0, 0, 0, 1, 1, 1, 0, 0, 0),
-                       (0, 0, 0, 1, 0, 0, 0, 0, 0),
-                       (0, 0, 0, 1, 0, 0, 0, 0, 0),
-                       (0, 0, 0, 0, 0, 0, 0, 0, 0),
-                       (0, 0, 0, 0, 0, 0, 0, 0, 0),
-                       (0, 0, 0, 0, 0, 0, 0, 0, 0),
-                       (0, 0, 0, 0, 0, 0, 0, 0, 0),
-                       (0, 0, 0, 0, 0, 0, 0, 0, 0)), dtype=np.uint8)
+                                     (0, 0, 0, 0, 0, 0, 0, 0, 0),
+                                     (0, 0, 0, 1, 1, 1, 0, 0, 0),
+                                     (0, 0, 0, 0, 0, 1, 0, 0, 0),
+                                     (0, 0, 0, 0, 0, 1, 0, 0, 0),
+                                     (0, 0, 0, 1, 1, 1, 0, 0, 0),
+                                     (0, 0, 0, 1, 0, 1, 0, 0, 0),
+                                     (0, 0, 0, 1, 0, 0, 0, 0, 0),
+                                     (0, 0, 0, 0, 0, 0, 0, 0, 0),
+                                     (0, 0, 0, 0, 0, 0, 0, 0, 0),
+                                     (0, 0, 0, 0, 0, 0, 0, 0, 0),
+                                     (0, 0, 0, 0, 0, 0, 0, 0, 0),
+                                     (0, 0, 0, 0, 0, 0, 0, 0, 0)), dtype=np.uint8)
 
         self._shape = np.array(((1, 1, 1),
                                 (1, 0, 1),
@@ -28,10 +29,11 @@ class TestNaiveTemplateAutoReg(unittest.TestCase):
 
     def test_subpixel_shift(self):
         result_x, result_y, result_strength, _ = naive_template.pattern_match_autoreg(self._shape,
-                                                                                   self._test_image)
-        self.assertEqual(result_x, 0.5)
-        self.assertEqual(result_y, -1.5)
-        self.assertGreaterEqual(result_strength, 0.8)
+                                                                                      self._test_image,
+                                                                                      cv2.TM_CCORR_NORMED)
+        print(result_x, result_y)
+        np.testing.assert_almost_equal(result_x, 0.167124, decimal=5)
+        np.testing.assert_almost_equal(result_y, -1.170976, decimal=5)
 
 class TestNaiveTemplate(unittest.TestCase):
 

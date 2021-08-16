@@ -1,5 +1,7 @@
+import time
 import warnings
 import json
+from subprocess import CalledProcessError
 
 from redis import StrictRedis
 import numpy as np
@@ -7,7 +9,6 @@ import pyproj
 import shapely
 import sqlalchemy
 from plio.io.io_gdal import GeoDataset
-from pysis.exceptions import ProcessError
 
 from autocnet.cg import cg as compgeom
 from autocnet.graph.node import NetworkNode
@@ -89,6 +90,7 @@ def place_points_in_overlap(overlap,
                             distribute_points_kwargs={},
                             point_type=2,
                             ncg=None,
+                            use_cache=False,
                             **kwargs):
     """
     Place points into an overlap geometry by back-projecing using sensor models.
@@ -121,6 +123,11 @@ def place_points_in_overlap(overlap,
          An autocnet.graph.network NetworkCandidateGraph instance representing the network
          to apply this function to
 
+    use_cache : bool
+                If False (default) this func opens a database session and writes points
+                and measures directly to the respective tables. If True, this method writes 
+                messages to the point_insert (defined in ncg.config) redis queue for 
+                asynchronous (higher performance) inserts.
 
     Returns
     -------
@@ -139,6 +146,7 @@ def place_points_in_overlap(overlap,
     autocnet.graph.network.NetworkCandidateGraph: for associated properties and functionalities of the
     NetworkCandidateGraph class
     """
+    t1 = time.time()
     if not ncg.Session:
         raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
 
@@ -169,7 +177,7 @@ def place_points_in_overlap(overlap,
             nn = NetworkNode(node_id=id, image_path=res.path)
             nn.parent = ncg
             nodes.append(nn)
-    
+
     print(f'Attempting to place measures in {len(nodes)} images.')
     for v in valid:
         lon = v[0]
@@ -177,17 +185,16 @@ def place_points_in_overlap(overlap,
 
         # Calculate the height, the distance (in meters) above or
         # below the aeroid (meters above or below the BCBF spheroid).
-        px, py = ncg.dem.latlon_to_pixel(lat, lon)
-        height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
+        height = ncg.dem.get_height(lat, lon)
 
         # Need to get the first node and then convert from lat/lon to image space
-        for reference_index, node in enumerate(nodes):  
-            # reference_index is the index into the list of measures for the image that is not shifted and is set at the 
+        for reference_index, node in enumerate(nodes):
+            # reference_index is the index into the list of measures for the image that is not shifted and is set at the
             # reference against which all other images are registered.
             if cam_type == "isis":
                 try:
-                    line, sample = isis.ground_to_image(node["image_path"], lon, lat)
-                except ProcessError as e:
+                    sample, line = isis.ground_to_image(node["image_path"], lon, lat)
+                except CalledProcessError as e:
                     if 'Requested position does not project in camera model' in e.stderr:
                         print(f'point ({lon}, {lat}) does not project to reference image {node["image_path"]}')
                         continue
@@ -213,7 +220,7 @@ def place_points_in_overlap(overlap,
             if interesting is not None:
                 # We have found an interesting feature and have identified the reference point.
                 break
- 
+
         if interesting is None:
             warnings.warn('Unable to find an interesting point, falling back to the a priori pointing')
             newsample = sample
@@ -230,7 +237,7 @@ def place_points_in_overlap(overlap,
         if cam_type == "isis":
             try:
                 p = isis.point_info(node["image_path"], newsample, newline, point_type="image")
-            except ProcessError as e:
+            except CalledProcessError as e:
                 if 'Requested position does not project in camera model' in e.stderr:
                     print(node["image_path"])
                     print(f'interesting point ({newsample}, {newline}) does not project back to ground')
@@ -252,8 +259,7 @@ def place_points_in_overlap(overlap,
                                                            semi_major, semi_minor, 'geocent', 'latlon')
             updated_lon, updated_lat = og2oc(updated_lon_og, updated_lat_og, semi_major, semi_minor)
 
-            px, py = ncg.dem.latlon_to_pixel(updated_lat, updated_lon)
-            updated_height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
+            updated_height = ncg.dem.get_height(updated_lat, updated_lon)
 
 
             # Get the BCEF coordinate from the lon, lat
@@ -292,8 +298,8 @@ def place_points_in_overlap(overlap,
                 sample, line = image_coord.samp, image_coord.line
             if cam_type == "isis":
                 try:
-                    line, sample = isis.ground_to_image(node["image_path"], updated_lon, updated_lat)
-                except ProcessError as e:
+                    sample, line = isis.ground_to_image(node["image_path"], updated_lon, updated_lat)
+                except CalledProcessError as e:
                     if 'Requested position does not project in camera model' in e.stderr:
                         print(f'interesting point ({updated_lon},{updated_lat}) does not project to image {node["image_path"]}')
                         continue
@@ -310,8 +316,21 @@ def place_points_in_overlap(overlap,
         if len(point.measures) >= 2:
             points.append(point)
     print(f'Able to place {len(points)} points.')
-    Points.bulkadd(points, ncg.Session)
-    return points
+
+    # Insert the points into the database asynchronously (via redis) or synchronously via the ncg
+    if use_cache:
+        # Push
+        print('Using the cache')
+        ncg.redis_queue.rpush(ncg.point_insert_queue, *[json.dumps(point.to_dict(_hide=[]), cls=JsonEncoder) for point in points])
+        ncg.redis_queue.incr(ncg.point_insert_counter, amount=len(points))
+    else:
+        with ncg.session_scope() as session:
+            for point in points:
+                session.add(point)
+    t2 = time.time()
+    print(f'Total processing time was {t2-t1} seconds.')
+    
+    return
 
 def place_points_in_image(image,
                           identifier="autocnet",
@@ -382,8 +401,7 @@ def place_points_in_image(image,
 
         # Calculate the height, the distance (in meters) above or
         # below the aeroid (meters above or below the BCBF spheroid).
-        px, py = ncg.dem.latlon_to_pixel(lat, lon)
-        height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
+        height = ncg.dem.get_height(lat, lon)
 
         with ncg.session_scope() as session:
             intersecting_images = session.query(Images.id, Images.path).filter(Images.geom.ST_Intersects(point_geometry)).all()
@@ -400,8 +418,8 @@ def place_points_in_image(image,
         node = nodes[0]
         if cam_type == "isis":
             try:
-                line, sample = isis.ground_to_image(node["image_path"], lon, lat)
-            except ProcessError as e:
+                sample, line = isis.ground_to_image(node["image_path"], lon, lat)
+            except CalledProcessError as e:
                 if 'Requested position does not project in camera model' in e.stderr:
                     print(f'point ({lon}, {lat}) does not project to reference image {node["image_path"]}')
                     continue
@@ -434,7 +452,7 @@ def place_points_in_image(image,
         if cam_type == "isis":
             try:
                 p = isis.point_info(node["image_path"], newsample, newline, point_type="image")
-            except ProcessError as e:
+            except CalledProcessError as e:
                 if 'Requested position does not project in camera model' in e.stderr:
                     print(node["image_path"])
                     print(f'interesting point ({newsample}, {newline}) does not project back to ground')
@@ -456,8 +474,7 @@ def place_points_in_image(image,
                                                            semi_major, semi_minor, 'geocent', 'latlon')
             updated_lon, updated_lat = og2oc(updated_lon_og, updated_lat_og, semi_major, semi_minor)
 
-            px, py = ncg.dem.latlon_to_pixel(updated_lat, updated_lon)
-            updated_height = ncg.dem.read_array(1, [px, py, 1, 1])[0][0]
+            updated_height = ncg.dem.get_height(updated_lat, updated_lon)
 
 
             # Get the BCEF coordinate from the lon, lat
@@ -498,8 +515,8 @@ def place_points_in_image(image,
                 sample, line = image_coord.samp, image_coord.line
             if cam_type == "isis":
                 try:
-                    line, sample = isis.ground_to_image(node["image_path"], updated_lon, updated_lat)
-                except ProcessError as e:
+                    sample, line = isis.ground_to_image(node["image_path"], updated_lon, updated_lat)
+                except CalledProcessError as e:
                     if 'Requested position does not project in camera model' in e.stderr:
                         print(f'interesting point ({lon},{lat}) does not project to image {node["image_path"]}')
                         insert = False
@@ -521,11 +538,11 @@ def place_points_in_image(image,
 def add_measures_to_point(pointid, cam_type='isis', ncg=None, Session=None):
     if not ncg.Session:
         raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
-    
+
     if isinstance(pointid, Points):
         pointid = pointid.id
 
-    
+
     with ncg.session_scope() as session:
         point = session.query(Points).filter(Points.id == pointid).one()
         point_lon = point.geom.x
@@ -540,11 +557,11 @@ def add_measures_to_point(pointid, cam_type='isis', ncg=None, Session=None):
         for image in images:
             if image.id == reference_image_id:
                 continue  # This is the reference image, so pass on adding a new measure
-            
+
             if cam_type == "isis":
                 try:
-                    line, sample = isis.ground_to_image(image.path, point_lon, point_lat)
-                except ProcessError as e:
+                    sample, line = isis.ground_to_image(image.path, point_lon, point_lat)
+                except CalledProcessError as e:
                     if 'Requested position does not project in camera model' in e.stderr:
                         print(f'interesting point ({point_lon},{point_lat}) does not project to image {image.name}')
 
@@ -555,11 +572,11 @@ def add_measures_to_point(pointid, cam_type='isis', ncg=None, Session=None):
                                            imageid=image.id,
                                            serial=image.serial,
                                            measuretype=3,
-                                           choosername='add_measures_to_point')) 
+                                           choosername='add_measures_to_point'))
             i = 0
             for m in point.measures:
                 if m.measuretype == 2 or m.measuretype == 3:
                     i += 1
             if i >= 2:
-                point.ignore = False      
-    return
+                point.ignore = False
+

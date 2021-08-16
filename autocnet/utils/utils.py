@@ -12,6 +12,7 @@ from osgeo import ogr
 
 from sklearn.cluster import DBSCAN
 from sklearn.neighbors import NearestNeighbors
+from sklearn.neighbors import KDTree
 
 from scipy.spatial import Delaunay
 
@@ -886,3 +887,5 @@ def hillshade(img, azi=255, min_slope=20, max_slope=100, min_bright=0, grayscale
     arrfotout = bytescale(arrforout)
     arrforout.shape
     return arrforout
+
+

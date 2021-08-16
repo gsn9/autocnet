@@ -5,6 +5,7 @@ import json
 import math
 import os
 from shutil import copyfile
+import threading
 from time import gmtime, strftime, time
 import warnings
 from itertools import combinations
@@ -38,6 +39,7 @@ from plurmy import Slurm
 import autocnet
 from autocnet.config_parser import parse_config
 from autocnet.cg import cg
+from autocnet.graph.asynchronous_funcs import watch_insert_queue, watch_update_queue
 from autocnet.graph import markov_cluster
 from autocnet.graph.edge import Edge, NetworkEdge
 from autocnet.graph.node import Node, NetworkNode
@@ -53,6 +55,7 @@ from autocnet.vis.graph_view import plot_graph, cluster_plot
 from autocnet.control import control
 from autocnet.spatial.overlap import compute_overlaps_sql
 from autocnet.spatial.isis import point_info
+from autocnet.spatial.surface import GdalDem, EllipsoidDem
 from autocnet.transformation.spatial import reproject, og2oc
 
 #np.warnings.filterwarnings('ignore')
@@ -1326,7 +1329,7 @@ class NetworkCandidateGraph(CandidateGraph):
         for s, d, e in self.edges(data='data'):
             e.parent = self
 
-        self. apply_iterable_options = {
+        self.apply_iterable_options = {
                 'edge' : self.edges,
                 'edges' : self.edges,
                 'e' : self.edges,
@@ -1356,7 +1359,7 @@ class NetworkCandidateGraph(CandidateGraph):
                 6: CandidateGroundPoints
             }
 
-    def config_from_file(self, filepath):
+    def config_from_file(self, filepath, async_watchers=False):
         """
         A NetworkCandidateGraph uses a database. This method parses a config
         file to set up the connection. Additionally, this loads planetary
@@ -1367,11 +1370,16 @@ class NetworkCandidateGraph(CandidateGraph):
         ----------
         filepath : str
                    The path to the config file
+
+        async_watchers : bool
+                         If True the ncg will also spawn redis queue watching threads
+                         that manage asynchronous database inserts. This is primarily
+                         used for increased write performance.
         """
         # The YAML library will raise any parse errors
-        self.config_from_dict(parse_config(filepath))
+        self.config_from_dict(parse_config(filepath), async_watchers=async_watchers)
 
-    def config_from_dict(self, config_dict):
+    def config_from_dict(self, config_dict, async_watchers=False):
         """
         A NetworkCandidateGraph uses a database. This method loads a config
         dict to set up the connection. Additionally, this loads planetary
@@ -1382,14 +1390,23 @@ class NetworkCandidateGraph(CandidateGraph):
         ----------
         filepath : str
                    The path to the config file
+
+        async_watchers : bool
+                         If True the ncg will also spawn redis queue watching threads
+                         that manage asynchronous database inserts. This is primarily
+                         used for increased write performance.
         """
         self.config = config_dict
-
+        self.async_watchers = async_watchers
         # Setup REDIS
         self._setup_queues()
 
         # Setup the database
         self._setup_database()
+
+        # Setup threaded queue watchers
+        if self.async_watchers == True:
+            self._setup_asynchronous_workers()
 
         # Setup the DEM
         # I dislike having the DEM on the NCG, but in the short term it
@@ -1414,11 +1431,22 @@ class NetworkCandidateGraph(CandidateGraph):
 
     def _setup_dem(self):
         spatial = self.config['spatial']
+        semi_major = spatial.get('semimajor_rad')
+        semi_minor = spatial.get('semiminor_rad')
+        dem_type = spatial.get('dem_type')
         dem = spatial.get('dem', False)
         if dem:
-            self.dem = GeoDataset(dem)
+            self.dem = GdalDem(dem, semi_major, semi_minor, dem_type)
         else:
-            self.dem = None
+            self.dem = EllipsoidDem(semi_major, semi_minor)
+
+    @property
+    def Session(self):
+        return self._Session
+
+    @Session.setter
+    def Session(self, Session):
+        self._Session = Session
 
     def _setup_database(self):
         db = self.config['database']
@@ -1462,19 +1490,70 @@ class NetworkCandidateGraph(CandidateGraph):
         self.redis_queue = StrictRedis(host=conf['host'],
                                        port=conf['port'],
                                        db=0)
-        self.processing_queue = conf['processing_queue']
-        self.completed_queue = conf['completed_queue']
-        self.working_queue = conf['working_queue']
+        self.processing_queue = conf['basename'] + ':processing'
+        self.completed_queue = conf['basename'] + ':completed'
+        self.working_queue = conf['basename'] + ':working'
+        self.point_insert_queue = conf['basename'] + ':point_insert_queue'
+        self.point_insert_counter = conf['basename'] + ':point_insert_counter'
+        self.measure_update_queue = conf['basename'] + ':measure_update_queue'
+        self.measure_update_counter = conf['basename'] + ':measure_update_counter'
+
+        self.queue_names = [self.processing_queue, self.completed_queue, self.working_queue,
+                           self.point_insert_queue, self.point_insert_counter, 
+                           self.measure_update_queue, self.measure_update_counter]
+         
+    def _setup_asynchronous_workers(self):
+        
+        # Default the counters to zero, unless they are already set from a run
+        # where the NCG did not exit cleanly
+        if self.redis_queue.get(self.point_insert_counter) is None:
+            self.redis_queue.set(self.point_insert_counter, 0)
+
+        if self.redis_queue.get(self.measure_update_counter) is None:
+            self.redis_queue.set(self.measure_update_counter, 0)
+
+
+        # Start the insert watching thread
+        self.point_inserter_stop_event = threading.Event()
+        self.point_inserter = threading.Thread(target=watch_insert_queue, 
+                                               args=(self.redis_queue,
+                                                     self.point_insert_queue, 
+                                                     self.point_insert_counter, 
+                                                     self.engine,
+                                                     self.point_inserter_stop_event))
+        self.point_inserter.setDaemon(True)
+        self.point_inserter.start()
+
+        # Start the update watching thread
+        self.measure_updater_stop_event = threading.Event()
+        self.measure_updater = threading.Thread(target=watch_update_queue, 
+                                               args=(self.redis_queue,
+                                                     self.measure_update_queue, 
+                                                     self.measure_update_counter, 
+                                                     self.engine,
+                                                     self.measure_updater_stop_event))
+        self.measure_updater.setDaemon(True)
+        self.measure_updater.start()        
 
     def clear_queues(self):
         """
         Delete all messages from the redis queue. This a convenience method.
         The `redis_queue` object is a redis-py StrictRedis object with API
         documented at: https://redis-py.readthedocs.io/en/latest/#redis.StrictRedis
+
+        This also needs to restart any threaded watchers of the queues.
         """
-        queues = [self.processing_queue, self.completed_queue, self.working_queue]
-        for q in queues:
+        if self.async_watchers:
+            self.point_inserter_stop_event.set()
+            self.measure_updater_stop_event.set()
+        
+        for q in self.queue_names:
             self.redis_queue.delete(q)
+        
+        self._setup_queues()
+        if self.async_watchers:
+            self._setup_asynchronous_workers()
+
 
     def _execute_sql(self, sql):
         """
@@ -1586,6 +1665,7 @@ class NetworkCandidateGraph(CandidateGraph):
             reapply=False,
             log_dir=None,
             queue=None,
+            redis_queue='processing_queue',
             exclude=None,
             **kwargs):
         """
@@ -1649,9 +1729,13 @@ class NetworkCandidateGraph(CandidateGraph):
                  Of keyword arguments passed to the function being applied
 
         queue : str
-                The processing queue to use. If None (default), use the processing queue from
-                the config file.
+                The cluster processing queue to submit jobs to. If None (default),
+                use the cluster processing queue from the config file.
 
+        redis_queue : str
+                      The redis queue to push messages to that are then pulled by the
+                      cluster job this call launches. Options are: 'processing_queue' (default)
+                      or 'working_queue'
         Returns
         -------
         job_str : str
@@ -1684,6 +1768,8 @@ class NetworkCandidateGraph(CandidateGraph):
 
         job_counter = self.queue_length
 
+        # TODO: reapply uses the queue name and reapplies on that queue.
+
         if not reapply:
             # Determine which obj will be called
             if isinstance(on, str):
@@ -1711,7 +1797,10 @@ class NetworkCandidateGraph(CandidateGraph):
         rconf = self.config['redis']
         rhost = rconf['host']
         rport = rconf['port']
-        processing_queue = rconf['processing_queue']
+        try:
+            processing_queue = getattr(self, redis_queue)
+        except AttributeError:
+            print(f'Unable to find attribute {redis_queue} on this object. Valid queue names are: "processing_queue" and "working_queue".')
 
         env = self.config['env']
         condaenv = env['conda']
@@ -1720,7 +1809,7 @@ class NetworkCandidateGraph(CandidateGraph):
 
         isissetup = f'export ISISROOT={isisroot} && export ISISDATA={isisdata}'
         condasetup = f'conda activate {condaenv}'
-        job = f'acn_submit -r={rhost} -p={rport} {processing_queue}'
+        job = f'acn_submit -r={rhost} -p={rport} {processing_queue} {self.working_queue}'
         command = f'{condasetup} && {isissetup} && {job}'
 
         if queue == None:
@@ -1732,8 +1821,8 @@ class NetworkCandidateGraph(CandidateGraph):
                      time=walltime,
                      partition=queue,
                      output=log_dir+f'/autocnet.{function}-%j')
-        job_str = submitter.submit(array='1-{}%{}'.format(job_counter,arraychunk), 
-                                   chunksize=chunksize, 
+        job_str = submitter.submit(array='1-{}%{}'.format(job_counter,arraychunk),
+                                   chunksize=chunksize,
                                    exclude=exclude)
         return job_str
 
@@ -1807,6 +1896,8 @@ class NetworkCandidateGraph(CandidateGraph):
                                         lonsigma,
                                         radsigma,
                                         self.config['spatial']['semimajor_rad'])
+        
+        print("df shape: ", df.shape)
 
         if flistpath is None:
             flistpath = os.path.splitext(path)[0] + '.lis'
@@ -1824,8 +1915,8 @@ class NetworkCandidateGraph(CandidateGraph):
                            inplace=True)
         cnet.to_isis(df, path, targetname=target)
         cnet.write_filelist(fpaths, path=flistpath)
-        
-        # Even though this method writes, having a non-None return 
+
+        # Even though this method writes, having a non-None return
         # let's a user work with the data that is passed to plio
         return df
 
@@ -1846,9 +1937,9 @@ class NetworkCandidateGraph(CandidateGraph):
                        For example, autocnet_14 becomes 14.
         """
         isis_network = cnet.from_isis(path)
-        io_controlnetwork.update_from_jigsaw(isis_network, 
-                                             ncg.measures, 
-                                             ncg.connection, 
+        io_controlnetwork.update_from_jigsaw(isis_network,
+                                             ncg.measures,
+                                             ncg.connection,
                                              pointid_func=pointid_func)
 
     @classmethod
@@ -1939,14 +2030,14 @@ class NetworkCandidateGraph(CandidateGraph):
         Returns
         -------
         node.id : int
-                  The id of the newly added node. 
+                  The id of the newly added node.
         """
         image_name = os.path.basename(img_path)
         node = NetworkNode(image_path=img_path, image_name=image_name)
         node.parent = self
         node.populate_db()
         return node['node_id']
-        
+
     def copy_images(self, newdir):
         """
         Copy images from a given directory into a new directory and
@@ -1972,8 +2063,8 @@ class NetworkCandidateGraph(CandidateGraph):
                     session.commit()
                 else:
                     continue
-            
-    def add_from_remote_database(self, source_db_config, path,  query_string='SELECT * FROM public.images LIMIT 10'):
+
+    def add_from_remote_database(self, source_db_config, path=None,  query_string='SELECT * FROM public.images LIMIT 10'):
         """
         This is a constructor that takes an existing database containing images and sensors,
         copies the selected rows into the project specified in the autocnet_config variable,
@@ -1998,7 +2089,8 @@ class NetworkCandidateGraph(CandidateGraph):
                The PATH to which images in the database specified in the config
                will be copied to. This method duplicates the data and copies it
                to a user defined PATH to avoid issues with updating image ephemeris
-               across projects.
+               across projects. The default PATH is (None), meaning the data will
+               not be copied.
 
         query_string : str
                        An optional string to select a subset of the images in the
@@ -2024,13 +2116,14 @@ class NetworkCandidateGraph(CandidateGraph):
         sourcesession = sourceSession()
 
         sourceimages = sourcesession.execute(query_string).fetchall()
-
+        # Change for SQLAlchemy >= 1.4, results are now row objects
+        sourceimages = [sourceimage._asdict() for sourceimage in sourceimages]
         with self.session_scope() as destinationsession:
             destinationsession.execute(Images.__table__.insert(), sourceimages)
 
             # Get the camera objects to manually join. Keeps the caller from
             # having to remember to bring cameras as well.
-            ids = [i[0] for i in sourceimages]
+            #ids = [i[0] for i in sourceimages]
             #cameras = sourcesession.query(Cameras).filter(Cameras.image_id.in_(ids)).all()
             #for c in cameras:
             #    destinationsession.merge(c)
@@ -2038,7 +2131,8 @@ class NetworkCandidateGraph(CandidateGraph):
         sourcesession.close()
 
         # Create the graph, copy the images, and compute the overlaps
-        self.copy_images(path)
+        if path:
+            self.copy_images(path)
         self.from_database()
         self._execute_sql(compute_overlaps_sql)
 
@@ -2222,7 +2316,7 @@ class NetworkCandidateGraph(CandidateGraph):
         jobs are then called on next cluster job launch, causing failures. This
         method provides a check for left over jobs.
         """
-        llen = self.redis_queue.llen(self.config['redis']['processing_queue'])
+        llen = self.redis_queue.llen(self.processing_queue)
         return llen
 
     @property
@@ -2408,7 +2502,7 @@ class NetworkCandidateGraph(CandidateGraph):
         Distribute candidate ground points into the union of the image footprints. This
         function returns a list of 2d nd-arrays where the first element is the longitude
         and the second element is the latitude.
-        
+
         Parameters
         ----------
         distirbute_points_kwargs : dict
@@ -2418,7 +2512,7 @@ class NetworkCandidateGraph(CandidateGraph):
         -------
         valid : np.ndarray
                 n, 2 array with each row in the form lon, lat
-        
+
         Examples
         --------
         To use this method, one can first define the spacing of ground points in the north-
@@ -2429,18 +2523,18 @@ class NetworkCandidateGraph(CandidateGraph):
             def ew(x):
                 from math import ceil
                 return ceil(round(x,1)*3)
-        
+
         Next these arguments can be passed in in order to generate the grid of points:
             distribute_points_kwargs = {'nspts_func':ns, 'ewpts_func':ew, 'method':'classic'}
             valid = ncg.distribute_ground_uniform(distribute_points_kwargs=distribute_points_kwargs)
-        
+
         At this point, it is possible to visualize the valid points inside of a Jupyter notebook. This
         is frequently convenient when combined with the `ncg.union` property that displays the unioned
         geometries in the NetworkCandidateGraph.
         Finally, the valid points can be propagated using apply. The code below will use the defined base
         to find the most interesting ground feature in the region of the valid point and write that point
         to the table defined by CandidateGroundPoints (autocnet.io.db.model):
-        
+
             base = 'mc11_oxia_palus_dir_final.cub'
             ncg.apply('matcher.ground.find_most_interesting_ground', on=valid, args=(base,))
         """
@@ -2450,17 +2544,17 @@ class NetworkCandidateGraph(CandidateGraph):
 
     def distribute_ground_density(self, threshold=4, distribute_points_kwargs={}):
         """
-        Distribute candidate ground points into overlaps with a number of images greater than or equal 
-        to the threshold. This function returns a list of 2d nd-arrays where the first element is the 
+        Distribute candidate ground points into overlaps with a number of images greater than or equal
+        to the threshold. This function returns a list of 2d nd-arrays where the first element is the
         longitude and the second element is the latitude.
-        
+
         Parameters
         ----------
         distirbute_points_kwargs : dict
                                    Of arguments that are passed on the the
                                    distribute_points_in_geom argument in autocnet.cg.cg
         threshold : int
-                    Overlaps intersecting threshold images or greater have points placed. 
+                    Overlaps intersecting threshold images or greater have points placed.
                     Default 4.
         Returns
         -------
@@ -2508,4 +2602,4 @@ class NetworkCandidateGraph(CandidateGraph):
                                          self.dem,
                                          nodes,
                                          **kwargs)
-    
+

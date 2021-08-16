@@ -22,6 +22,8 @@ def test_json_encoder(data, serialized):
     res = json.loads(res, object_hook=object_hook)
     if isinstance(res['foo'], list):
         res['foo'] = sorted(res['foo'])
+    elif isinstance(res['foo'], Point):
+        res['foo'] = res['foo'].wkt
     assert res == serialized
 
 @pytest.mark.parametrize("data", [
