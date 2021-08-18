@@ -61,9 +61,6 @@ def mutual_information_match(d_template, s_image, subpixel_size=3,
                     Subpixel area size to search for the center of mass
                     calculation
 
-    bins : int
-           Number of bins to use when computing the histograms
-
     func : function
            Function object to be used to compute the histogram comparison
 
