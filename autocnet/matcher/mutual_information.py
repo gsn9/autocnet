@@ -41,8 +41,8 @@ def mutual_information(t1, t2, **kwargs):
     nzs = pxy > 0 # Only non-zero pxy values contribute to the sum
     return np.sum(pxy[nzs] * np.log(pxy[nzs] / px_py[nzs]))
 
-def mutual_information_match(d_template, s_image, subpixel_size=3, bins=100,
-                       func=None, **kwargs):
+def mutual_information_match(d_template, s_image, subpixel_size=3,
+                             func=None, **kwargs):
     """
     Applys the mutual information matcher function over a search image using a
     defined template
@@ -100,7 +100,7 @@ def mutual_information_match(d_template, s_image, subpixel_size=3, bins=100,
         for j in range(x_diff+1):
             sub_image = s_image[i:i+template_size[1],  # y
                                 j:j+template_size[0]]  # x
-            corr = func(sub_image, d_template, bins=bins, **kwargs)
+            corr = func(sub_image, d_template, **kwargs)
             if corr > max_corr:
                 max_corr = corr
                 max_i = i
