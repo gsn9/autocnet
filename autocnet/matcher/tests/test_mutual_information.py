@@ -12,7 +12,7 @@ from .. import mutual_information
 def test_good_mi():
     test_image1 = np.array([[i for i in range(50)] for j in range(50)])
     corrilation = mutual_information.mutual_information(test_image1, test_image1)
-    assert corrilation == 2.3025850929940455
+    assert corrilation == pytest.approx(2.30258509299404)
 
 def test_bad_mi():
     test_image1 = np.array([[i for i in range(50)] for j in range(50)])
