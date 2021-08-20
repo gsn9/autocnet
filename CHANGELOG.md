@@ -32,6 +32,10 @@ When preparing for a bug fix release create a new 2nd heading above the Fixed
 heading to indicate that only the bug fixes and security fixes are in the bug fix
 release.
 -->
+## [Unreleased]
+
+### Added
+- Added a mutual information matcher [#559](https://github.com/USGS-Astrogeology/autocnet/pull/559)
 
 ## [0.6.0]
 
