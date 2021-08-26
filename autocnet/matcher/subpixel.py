@@ -922,7 +922,7 @@ def geom_match_simple(base_cube,
     box = (0, 0, max(dst_arr.shape[1], base_arr.shape[1]), max(dst_arr.shape[0], base_arr.shape[0]))
     dst_arr = np.array(Image.fromarray(dst_arr).crop(box))
 
-    dst_arr = tf.warp(dst_arr, affine)      
+    dst_arr = tf.warp(dst_arr, affine, order=3)      
     t3 = time.time()
     print(f'Affine warp took {t3-t2} seconds.')
     if verbose:

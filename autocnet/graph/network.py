@@ -1938,8 +1938,8 @@ class NetworkCandidateGraph(CandidateGraph):
         """
         isis_network = cnet.from_isis(path)
         io_controlnetwork.update_from_jigsaw(isis_network,
-                                             ncg.measures,
-                                             ncg.connection,
+                                             self.measures,
+                                             self.engine,
                                              pointid_func=pointid_func)
 
     @classmethod

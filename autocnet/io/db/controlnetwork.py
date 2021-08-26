@@ -98,7 +98,7 @@ ORDER BY measures."pointid", measures."id";
         return df
 
 
-def update_from_jigsaw(cnet, measures, connection, pointid_func=None):
+def update_from_jigsaw(cnet, measures, engine, pointid_func=None):
     """
     Updates a database fields: liner, sampler, measureJigsawRejected,
     samplesigma, and linesigma using an ISIS control network.
@@ -120,8 +120,8 @@ def update_from_jigsaw(cnet, measures, connection, pointid_func=None):
     measures : pd.DataFrame
                of measures from a database table. 
     
-    connection : object
-                 An SQLAlchemy DB connection object
+    engine : object
+                 An SQLAlchemy DB engine object
 
     poitid_func : callable
                   A callable function that is used to split the id string in
@@ -174,12 +174,13 @@ def update_from_jigsaw(cnet, measures, connection, pointid_func=None):
     # Compute the residual from the components
     measures['residual'] = np.sqrt(measures['liner'] ** 2 + measures['sampler'] ** 2)
 
-    # Execute an SQL COPY from a CSV buffer into the DB
-    measures.to_sql('measures_tmp', connection, schema='public', if_exists='replace', index=False, method=copy_from_method)
+    with engine.connect() as connection:
+        # Execute an SQL COPY from a CSV buffer into the DB
+        measures.to_sql('measures_tmp', connection, schema='public', if_exists='replace', index=False, method=copy_from_method)
 
-    # Drop the old measures table and then rename the tmp measures table to be the 'new' measures table
-    connection.execute('DROP TABLE measures;')
-    connection.execute('ALTER TABLE measures_tmp RENAME TO measures;')
+        # Drop the old measures table and then rename the tmp measures table to be the 'new' measures table
+        connection.execute('DROP TABLE measures;')
+        connection.execute('ALTER TABLE measures_tmp RENAME TO measures;')
 
 # This is not a permanent placement for this function
 # TO DO: create a new module for parsing/cleaning points from a controlnetwork

@@ -1,39 +1,25 @@
 import os
 from setuptools import setup, find_packages
-import autocnet
-from glob import glob
-
-from autocnet.examples import available
 
 #Grab the README.md for the long description
 with open('README.md', 'r') as f:
     long_description = f.read()
 
-def setup_package():
-    examples = set()
-    for i in available():
-        if not os.path.isdir('autocnet/examples/' + i):
-            if '.' in i:
-                glob_name = 'examples/*.' + i.split('.')[-1]
-            else:
-                glob_name = 'examples/' + i
-        else:
-            glob_name = 'examples/' + i + '/*'
-        examples.add(glob_name)
+__version__ = '0.6.1'
 
+def setup_package():
     setup(
         name = "autocnet",
-        version = '0.6.0',
+        version = __version__,
         author = "Jay Laura",
         author_email = "jlaura@usgs.gov",
-        description = ("I/O API to support planetary data formats."),
+        description = ("Automated control network generation."),
         long_description = long_description,
         license = "Public Domain",
         keywords = "Multi-image correspondence detection",
         url = "http://packages.python.org/autocnet",
         packages=find_packages(),
         include_package_data=True,
-        package_data={'autocnet' : list(examples)},
         zip_safe=False,
         install_requires=[],
         classifiers=[

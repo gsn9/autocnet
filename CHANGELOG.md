@@ -37,6 +37,12 @@ release.
 ### Added
 - Added a mutual information matcher [#559](https://github.com/USGS-Astrogeology/autocnet/pull/559)
 
+### Changed
+- `geom_match_simple` defaults to a 3rd order warp for interpolation
+
+### Fixed
+- `update_from_jigsaw` failures due to stale code. Now uses a conntext on the engine to ensure closure
+
 ## [0.6.0]
 
 ### Added
