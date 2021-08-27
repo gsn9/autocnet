@@ -44,19 +44,21 @@ jobs:
               if: steps.bump-type.outputs.bump-type != 'null'
               run: |
                   CURRENT_VERSION='python setup.py --version'
-                  if ${BUMP_TYPE} == 'major'; then
+                  if ${{ steps.bump-type.outputs.bump-type }} == 'major'; then
                     NEW_VERSION=`IFS='.' read -ra SPLITVER <<< "$VERSION"; echo $(("${SPLITVER[0]}"+1))."${SPLITVER[1]}"."${SPLITVER[2]}";`
-                  elif ${BUMP_TYPE} == 'minor'; then
+                  elif ${{ steps.bump-type.outputs.bump-type }} == 'minor'; then
                     NEW_VERSION=`IFS='.' read -ra SPLITVER <<< "$VERSION"; echo "${SPLITVER[0]}".$(("${SPLITVER[1]}"+1))."${SPLITVER[2]}";`
-                  elif ${BUMP_TYPE} == 'patch'; then
+                  elif ${{ steps.bump-type.outputs.bump-type }} == 'patch'; then
                     NEW_VERSION=`IFS='.' read -ra SPLITVER <<< "$VERSION"; echo "${SPLITVER[0]}"."${SPLITVER[1]}".$(("${SPLITVER[2]}"+1));`
                   fi  
+                  echo "::set-output name=new-version::$NEW_VERSION"
+                  echo "::set-output name=current-version::#CURRENT_VERSION"
             - name: Update version in setup.py
               if: steps.bump-type.outputs.bump-type != 'null'
-              run: sed -i "s/$CURRENT_VERSION/$NEW_VERSION/g" setup.py
+              run: sed -i "s/${{ steps.new-version.outputs.current-version }}/${{ steps.new-version.outputs.new-version }}/g" setup.py
             - name: Update version in meta.yaml
               if: steps.bump-type.outputs.bump-type != 'null'
-              run: sed -i "s/$CURRENT_VERSION/$NEW_VERSION/g" conda/meta.yaml
+              run: sed -i "s/${{ steps.new-version.outputs.current-version }}/${{ steps.new-version.outputs.new-version }}/g" conda/meta.yaml
             - name: Commit bump
               if: steps.bump-type.outputs.bump-type != 'null'
               uses: EndBug/add-and-commit@v7
