@@ -44,11 +44,11 @@ jobs:
               if: steps.bump-type.outputs.bump-type != 'null'
               run: |
                   CURRENT_VERSION='python setup.py --version'
-                  if ${{ steps.bump-type.outputs.bump-type }} == 'major'; then
+                  if '${{ steps.bump-type.outputs.bump-type }}' == 'major'; then
                     NEW_VERSION=`IFS='.' read -ra SPLITVER <<< "$VERSION"; echo $(("${SPLITVER[0]}"+1))."${SPLITVER[1]}"."${SPLITVER[2]}";`
-                  elif ${{ steps.bump-type.outputs.bump-type }} == 'minor'; then
+                  elif '${{ steps.bump-type.outputs.bump-type }}' == 'minor'; then
                     NEW_VERSION=`IFS='.' read -ra SPLITVER <<< "$VERSION"; echo "${SPLITVER[0]}".$(("${SPLITVER[1]}"+1))."${SPLITVER[2]}";`
-                  elif ${{ steps.bump-type.outputs.bump-type }} == 'patch'; then
+                  elif '${{ steps.bump-type.outputs.bump-type }}' == 'patch'; then
                     NEW_VERSION=`IFS='.' read -ra SPLITVER <<< "$VERSION"; echo "${SPLITVER[0]}"."${SPLITVER[1]}".$(("${SPLITVER[2]}"+1));`
                   fi  
                   echo "::set-output name=new-version::$NEW_VERSION"
