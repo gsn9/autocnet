@@ -25,13 +25,13 @@ jobs:
               run: |
                   BUMP_TYPE=null
                   if [[ $BUMP_PATCH_PRESENT == 'true' ]]; then
-                      BUMP_TYPE=patch
+                      BUMP_TYPE='patch'
                   fi
                   if [[ $BUMP_MINOR_PRESENT == 'true' ]]; then
-                      BUMP_TYPE=minor
+                      BUMP_TYPE='minor'
                   fi
                   if [[ $BUMP_MAJOR_PRESENT == 'true' ]]; then
-                      BUMP_TYPE=major
+                      BUMP_TYPE='major'
                   fi
                   echo "::set-output name=bump-type::$BUMP_TYPE"
               env:
@@ -52,7 +52,7 @@ jobs:
                     NEW_VERSION=`IFS='.' read -ra SPLITVER <<< "$VERSION"; echo "${SPLITVER[0]}"."${SPLITVER[1]}".$(("${SPLITVER[2]}"+1));`
                   fi  
                   echo "::set-output name=new-version::$NEW_VERSION"
-                  echo "::set-output name=current-version::#CURRENT_VERSION"
+                  echo "::set-output name=current-version::$CURRENT_VERSION"
             - name: Update version in setup.py
               if: steps.bump-type.outputs.bump-type != 'null'
               run: sed -i "s/${{ steps.new-version.outputs.current-version }}/${{ steps.new-version.outputs.new-version }}/g" setup.py
