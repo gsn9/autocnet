@@ -1,11 +1,8 @@
 # AutoCNet
 
 [![Gitter Chat](https://badges.gitter.im/USGS-Astrogeology/autocnet.svg)](https://gitter.im/USGS-Astrogeology/autocnet?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-
 [![Travis-CI](https://travis-ci.org/USGS-Astrogeology/autocnet.svg?branch=dev)](https://travis-ci.org/USGS-Astrogeology/autocnet)
-
 [![Coveralls](https://coveralls.io/repos/USGS-Astrogeology/autocnet/badge.svg?branch=dev&service=github)](https://coveralls.io/github/USGS-Astrogeology/autocnet?branch=dev)
-
 [![Docs](https://img.shields.io/badge/Docs-latest-green.svg)](https://usgs-astrogeology.github.io/autocnet/)
 
 Automated sparse control network generation to support photogrammetric control of planetary image data.
