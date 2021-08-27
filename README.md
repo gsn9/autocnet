@@ -8,7 +8,7 @@
 Automated sparse control network generation to support photogrammetric control of planetary image data.
 
 ## Documentation
-Is available at: https://usgs-astrogeology.github.io/autocnet/
+Is available at: https://autocnet.readthedocs.io/en/dev/
 
 ## Installation Instructions
 We suggest using Anaconda Python to install Autocnet within a virtual environment.  These steps will walk you through the process.
