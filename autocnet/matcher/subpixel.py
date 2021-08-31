@@ -12,9 +12,9 @@ import sys
 
 from skimage import transform as tf
 from skimage import data
-from skimage import registration 
+from skimage import registration
 from skimage import filters
-from scipy import fftpack 
+from scipy import fftpack
 
 from matplotlib import pyplot as plt
 
@@ -26,8 +26,9 @@ import PIL
 from PIL import Image
 
 from autocnet.matcher.naive_template import pattern_match, pattern_match_autoreg
+from autocnet.matcher.mutual_information import mutual_information_match
 from autocnet.matcher import ciratefi
-from autocnet.spatial import isis 
+from autocnet.spatial import isis
 from autocnet.io.db.model import Measures, Points, Images, JsonEncoder
 from autocnet.graph.node import NetworkNode
 from autocnet.transformation import roi
@@ -59,8 +60,8 @@ def check_match_func(func):
     match_funcs = {
         "classic": subpixel_template_classic,
         "phase": iterative_phase,
-        "template": subpixel_template
-        # "mutualinformation": mutual_information
+        "template": subpixel_template,
+        "mutualinformation": mutual_information_match
     }
 
     if func in match_funcs.values():
@@ -493,7 +494,7 @@ def subpixel_template_classic(sx, sy, dx, dy,
     # In ISIS source image is the search and destination image is the pattern.
     # In ISIS the search is CTX and the pattern is THEMIS
     # So the data that are being used are swapped between autocnet and ISIS.
-    
+
     print('source image avg: ', s_img.mean())  #THEMIS
     print('dest image avg: ', d_img.mean())  # CTX
 
@@ -922,7 +923,7 @@ def geom_match_simple(base_cube,
     box = (0, 0, max(dst_arr.shape[1], base_arr.shape[1]), max(dst_arr.shape[0], base_arr.shape[0]))
     dst_arr = np.array(Image.fromarray(dst_arr).crop(box))
 
-    dst_arr = tf.warp(dst_arr, affine, order=3)      
+    dst_arr = tf.warp(dst_arr, affine, order=3)
     t3 = time.time()
     print(f'Affine warp took {t3-t2} seconds.')
     if verbose:
@@ -937,7 +938,7 @@ def geom_match_simple(base_cube,
     print('dst_arr mean: ', dst_arr.mean())
     print(f'dst_arr mm: {dst_arr.min()} {dst_arr.max()}')
     #print(f'special pixels: ', isis.get_isis_special_pixels(dst_arr))
-    
+
     if preprocess:
         base_arr, dst_arr = preprocess(base_arr, dst_arr)
 
@@ -945,14 +946,14 @@ def geom_match_simple(base_cube,
     t4 = time.time()
     print(f'Matching took {t4-t3} seconds')
 
-    try: 
+    try:
         x,y,maxcorr,temp_corrmap = restemplate
-    except: 
-        # did not return a corrmap 
-        x,y,maxcorr = restemplate 
+    except:
+        # did not return a corrmap
+        x,y,maxcorr = restemplate
         temp_corrmap = np.empty((size_x, size_y))
         temp_corrmap[:] = np.nan
-    
+
     if x is None or y is None:
         return None, None, None, None, None
     metric = maxcorr
@@ -1382,7 +1383,7 @@ def subpixel_register_measure(measureid,
         print(f'Attempting to subpixel register measure {measureid}: ({pointid}, {destinationimage.name})')
         currentlog = {'measureid': measureid,
                       'status': ''}
-        
+
         if source.measureid == measureid:
             currentlog['status'] = f'Unable to register this measure. Measure {measureid} is the reference measure.'
             return resultlog
@@ -1466,35 +1467,35 @@ def subpixel_register_point(pointid,
     ncg : obj
           the network candidate graph that the point is associated with; used for
           the DB session that is able to access the point.
-    
+
     geom_func : callable
-                function used to tranform the source and/or destination image before 
-                running a matcher. 
-    
+                function used to tranform the source and/or destination image before
+                running a matcher.
+
     match_func : callable
-                 subpixel matching function to use registering measures   
+                 subpixel matching function to use registering measures
 
     use_cache : bool
                 If False (default) this func opens a database session and writes points
-                and measures directly to the respective tables. If True, this method writes 
-                messages to the point_insert (defined in ncg.config) redis queue for 
-                asynchronous (higher performance) inserts.   
+                and measures directly to the respective tables. If True, this method writes
+                messages to the point_insert (defined in ncg.config) redis queue for
+                asynchronous (higher performance) inserts.
     """
 
     geom_func=geom_func.lower()
     match_func=match_func.lower()
 
     print(f"Using {geom_func} with the {match_func} matcher.")
-    
+
     match_func = check_match_func(match_func)
     geom_func = check_geom_func(geom_func)
 
     if not ncg.Session:
         raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
-    
+
     if isinstance(pointid, Points):
         pointid = pointid.id
-    
+
     t1 = time.time()
     with ncg.session_scope() as session:
         measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
@@ -1526,13 +1527,13 @@ def subpixel_register_point(pointid,
             nodes[measure.imageid] = NetworkNode(node_id=measure.imageid, image_path=res.path)
 
         session.expunge_all()
-    
+
     resultlog = []
     updated_measures = []
     for i, measure in enumerate(measures):
         if i == reference_index:
             continue
-        
+
         currentlog = {'measureid':measure.id,
                     'status':''}
         cost = None
@@ -1608,7 +1609,7 @@ def subpixel_register_point(pointid,
         updated_measures.append(measure)
         currentlog['status'] = f'Success. Distance shifted: {measure.template_shift}. Metric: {measure.template_metric}.'
         resultlog.append(currentlog)
-    
+
     # Once here, update the source measure (possibly back to ignore=False)
     updated_measures.append(source)
 
@@ -1702,7 +1703,7 @@ def register_to_base(pointid,
             pointid = point.id
         else:
             point = session.query(Points).filter(Points.id == pointid).one()
-        
+
         # Get all of the measures associated with the given point
         measures = point.measures
 
@@ -1715,7 +1716,7 @@ def register_to_base(pointid,
         bline = bpoint.get('Line')
         bsample = bpoint.get('Sample')
 
-        # Setup a cache so that we can get the file handles one time instead of 
+        # Setup a cache so that we can get the file handles one time instead of
         # once per measure in the measures list.
         image_cache = {}
 
@@ -1732,7 +1733,7 @@ def register_to_base(pointid,
                 measure_image = GeoDataset(measure_image.path)
                 image_cache[res.id] = measure_image
 
-            # Attempt to match the base 
+            # Attempt to match the base
             try:
                 print(f'prop point: base_image: {base_image}')
                 print(f'prop point: dest_image: {measure_image}')
@@ -1762,7 +1763,7 @@ def register_to_base(pointid,
     if match_results.shape[0] == 0:
         raise Exception("Point with id {pointid} has no measure that matches criteria, reference measure will remain unchanged")
 
-    # Compute the cost function for each match using the 
+    # Compute the cost function for each match using the
     costs = [cost_func(match_results[:,3], match[3]) for match in match_results]
 
     if verbose:
@@ -1790,60 +1791,60 @@ def register_to_base(pointid,
        point = session.query(Points).filter(Points.id == pointid).one()
        point.ref_measure = best_results[1]
     return
-    
-def estimate_logpolar_transform(img1, img2, low_sigma=0.5, high_sigma=30, verbose=False): 
+
+def estimate_logpolar_transform(img1, img2, low_sigma=0.5, high_sigma=30, verbose=False):
     """
-    Estimates the rotation and scale difference for img1 that maps to img2 using phase cross correlation on a logscale projection. 
-    
-    Scale and angular changes in cartesian space become translation in log-polar space. Translation from subpixel registration 
-    in log-polar space can then be translated into scale/rotation change in the original cartesian images. This scale + roation 
-    change estimation is then returned as an affine transform object. This can then be used before other subpixel registration 
-    methods to enable scale+rotation invariance. 
-    
-    See Also 
+    Estimates the rotation and scale difference for img1 that maps to img2 using phase cross correlation on a logscale projection.
+
+    Scale and angular changes in cartesian space become translation in log-polar space. Translation from subpixel registration
+    in log-polar space can then be translated into scale/rotation change in the original cartesian images. This scale + roation
+    change estimation is then returned as an affine transform object. This can then be used before other subpixel registration
+    methods to enable scale+rotation invariance.
+
+    See Also
     --------
 
-    skimage.filters.difference_of_gaussians : Bandpass filtering using a difference of gaussians 
+    skimage.filters.difference_of_gaussians : Bandpass filtering using a difference of gaussians
     skimage.filters.window : Simple wondowing function to remove spectral leakage along the axes in the fourier transform
 
     References
     ----------
-    
-    .. [1] Rittavee Matungka. 2009. Studies on log-polar transform for image registration and improvements 
-       using adaptive sampling and logarithmic spiral. Ph.D. Dissertation. Ohio State University, USA. Advisor(s) Yuan F. Zheng. 
+
+    .. [1] Rittavee Matungka. 2009. Studies on log-polar transform for image registration and improvements
+       using adaptive sampling and logarithmic spiral. Ph.D. Dissertation. Ohio State University, USA. Advisor(s) Yuan F. Zheng.
        Order Number: AAI3376091.
     .. [2] https://github.com/polakluk/fourier-mellin
-    .. [3] https://scikit-image.org/docs/stable/auto_examples/registration/plot_register_rotation.html 
-    
+    .. [3] https://scikit-image.org/docs/stable/auto_examples/registration/plot_register_rotation.html
+
     Parameters
     ----------
-    
-    img1: np.ndarray 
+
+    img1: np.ndarray
           The source image, this is the image that is used as a base as img2 is registered to the center on img1
-    
-    img2: np.ndarray 
+
+    img2: np.ndarray
           The image that will be moved to match img1
 
     low_sigma : float, list, np.array
                 The low standard deviation for the Gaussian kernel used in the difference of gaussians filter. This reccomended
                 to remove high frequency noise from the image before the log-polar projection as high frequency noise negatively impact registration
-                in log-polar space. The lower the sigma, the sharper the resulting image will be. Use a small low_sigma with a large high_sigma 
+                in log-polar space. The lower the sigma, the sharper the resulting image will be. Use a small low_sigma with a large high_sigma
                 to remove high frequency noise. Default is 0.5.
-    
+
     high_sigma : float, list, np.array
                 Standard deviation for the Gaussian kernel with the larger sigmas across all axes used in the difference of gaussians filter. This reccomended
                 to remove high frequency noise from the image before the log-polar projection as high frequency noise negatively impact registration
-                in log-polar space. The higher this sigma compared to the low_sigma, the more detail will be preserved. Use a small low_sigma with a large high_sigma 
+                in log-polar space. The higher this sigma compared to the low_sigma, the more detail will be preserved. Use a small low_sigma with a large high_sigma
                 to remove high frequency noise. A high sigma equal to ~1.6x the low sigma is reccomended for edge detection, so consider high_sigmas >= low_sigma*1.6. Default is 30.
 
-    verbose : bool 
-              If true, prints out information detailing the registration process 
-    
-    Returns 
+    verbose : bool
+              If true, prints out information detailing the registration process
+
+    Returns
     -------
     : skimage.transform.SimilarityTansform
       Scikit-image affine transformation object containing rotation and scale information to warp img1 to img2
-      
+
     """
     # First, band-pass filter both images
     img1 = filters.difference_of_gaussians(img1, low_sigma, high_sigma)
@@ -1881,8 +1882,8 @@ def estimate_logpolar_transform(img1, img2, low_sigma=0.5, high_sigma=30, verbos
     else:
         if recovered_angle > 90.0:
             recovered_angle -= 180
-            
-    if verbose: 
+
+    if verbose:
         fig, axes = plt.subplots(2, 2, figsize=(8, 8))
         ax = axes.ravel()
         ax[0].set_title("Original Image FFT\n(magnitude; zoomed)")
@@ -1905,7 +1906,7 @@ def estimate_logpolar_transform(img1, img2, low_sigma=0.5, high_sigma=30, verbos
         print()
         print(f"Recovered value for scaling difference: {shift_scale}")
 
-    # offset by the center of the image, scikit's ceter image rotation is defined by `axis / 2 - 0.5` 
+    # offset by the center of the image, scikit's ceter image rotation is defined by `axis / 2 - 0.5`
     shift_y, shift_x = np.asarray(img1.shape) / 2 - 0.5
     tf_scale = tf.SimilarityTransform(scale=shift_scale)
     tf_rotate = tf.SimilarityTransform(rotation=np.deg2rad(recovered_angle))
@@ -1914,67 +1915,67 @@ def estimate_logpolar_transform(img1, img2, low_sigma=0.5, high_sigma=30, verbos
 
     tf_rotate_from_center = (tf_shift + (tf_rotate + tf_shift_inv))
     return tf.SimilarityTransform((tf_rotate_from_center + tf_scale)._inv_matrix)
-    
-    
+
+
 def fourier_mellen(img1, img2, verbose=False, phase_kwargs={}):
     """
-    Iterative phase registration using a log-polar projection to estimate an affine for scale and roation invariance. 
+    Iterative phase registration using a log-polar projection to estimate an affine for scale and roation invariance.
 
-    
-    Parameters 
+
+    Parameters
     ----------
-    
-    img1: np.ndarray 
+
+    img1: np.ndarray
           The source image, this is the image that is used as a base as img2 is registered to the center on img1
-    
-    img2: np.ndarray 
+
+    img2: np.ndarray
           The image that will be moved to match img1
-        
-    verbose : bool 
-              If true, prints out information detailing the registration process 
-    
+
+    verbose : bool
+              If true, prints out information detailing the registration process
+
     phase_kwargs : dict
-                   Parameters to be passed into the iterative_phase matcher 
-                   
-    Returns 
+                   Parameters to be passed into the iterative_phase matcher
+
+    Returns
     -------
-    
+
     : float
-      The new x coordinate for img2 that registers to the center of img1 
-      
-    : float 
-      The new y coordinate for img2 that registers to the center of img1 
-    
-    : float 
-      Error returned by the iterative phase matcher 
+      The new x coordinate for img2 that registers to the center of img1
+
+    : float
+      The new y coordinate for img2 that registers to the center of img1
+
+    : float
+      Error returned by the iterative phase matcher
     """
-    # Get the affine transformation for scale + rotation invariance  
+    # Get the affine transformation for scale + rotation invariance
     affine = estimate_logpolar_transform(img1, img2, verbose=verbose)
-    
+
     # warp the source image to match the destination
     img1_warped = tf.warp(img1, affine)
     sx, sy = affine.inverse(np.asarray(img1.shape)/2)[0]
-    
-    # get translation with iterative phase 
+
+    # get translation with iterative phase
     newx, newy, error = iterative_phase(sx, sy, sx, sy, img1_warped, img2, **phase_kwargs)
-    
+
     if verbose:
         fig, axes = plt.subplots(2, 2, figsize=(8, 8))
         ax = axes.ravel()
-        
+
         ax[0].imshow(img1_warped)
         ax[0].set_title("Image 1 Transformed")
         ax[0].axhline(y=sy, color="red", linestyle="-", alpha=1, linewidth=1)
         ax[0].axvline(x=sx, color="red", linestyle="-", alpha=1, linewidth=1)
-        
+
         ax[2].imshow(img1)
         ax[2].set_title("Image 1")
         ax[2].axhline(y=img1.shape[0]/2, color="red", linestyle="-", alpha=1, linewidth=1)
         ax[2].axvline(x=img1.shape[1]/2, color="red", linestyle="-", alpha=1, linewidth=1)
-        
+
         ax[1].imshow(img2)
         ax[3].imshow(img2)
-        
+
         if not newx or not newy:
             ax[1].set_title("Image 2 REGISTRATION FAILED")
             ax[3].set_title("Image 2 REGISTRATION FAILED")
@@ -1984,5 +1985,5 @@ def fourier_mellen(img1, img2, verbose=False, phase_kwargs={}):
             ax[1].axvline(x=newx, color="red", linestyle="-", alpha=1, linewidth=1)
             ax[3].axhline(y=newy, color="red", linestyle="-", alpha=1, linewidth=1)
             ax[3].axvline(x=newx, color="red", linestyle="-", alpha=1, linewidth=1)
-        
+
     return newx, newy, error
