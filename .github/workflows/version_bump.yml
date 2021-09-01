@@ -71,4 +71,7 @@ jobs:
                   repo-token: ${{ secrets.GITHUB_TOKEN }}
                   author_name: github-actions[bot]
                   author_email: github-actions[bot]@users.noreply.github.com
+              env:
+                  # This is necessary in order to push a commit to the repo
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Leave this line unchanged
 
