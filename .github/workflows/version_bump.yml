@@ -68,3 +68,5 @@ jobs:
               with:
                   branch: ${{ github.event.pull_request.base.ref }}
                   message: 'Bump version to ${{ steps.new-version.outputs.new-version }}'
+                  repo-token: ${{ secrets.GITHUB_TOKEN }}
+
