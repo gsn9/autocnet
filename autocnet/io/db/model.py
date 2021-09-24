@@ -428,6 +428,8 @@ class Points(Base, BaseMixin):
                             order_by="asc(Measures.id)", 
                             backref=backref('point', lazy='joined'))
     reference_index = Column("referenceIndex", Integer, default=0)
+    _residuals = Column("residuals", ARRAY(Float))
+    _maxresidual = Column("maxResidual", Float)
 
     _default_fields = [
         "pointtype",
@@ -500,6 +502,22 @@ class Points(Base, BaseMixin):
         if isinstance(v, int):
             v = PointType(v)
         self._pointtype = v
+
+    @hybrid_property
+    def residuals(self):
+        return self._residuals
+
+    @residuals.setter
+    def residuals(self, v):
+        self._residuals = v
+
+    @hybrid_property
+    def maxresidual(self):
+        return self._maxresidual
+
+    @maxresidual.setter
+    def maxresidual(self, max_res):
+        self._maxresidual = max_res
 
     #def subpixel_register(self, Session, pointid, **kwargs):
     #    subpixel.subpixel_register_point(args=(Session, pointid), **kwargs)

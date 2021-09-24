@@ -7,10 +7,10 @@ def og2oc(lon, lat, semi_major, semi_minor):
 
     Parameters
     ----------
-    lon : float
+    lon : float or np.array
           longitude 0 to 360 domain (in degrees)
 
-    lat : float
+    lat : float or np.array
           planetographic latitude (in degrees)
 
     semi_major : float
@@ -21,10 +21,10 @@ def og2oc(lon, lat, semi_major, semi_minor):
 
     Returns
     -------
-    lon: float
+    lon: float or np.array
          longitude (in degrees)
 
-    lat: float
+    lat: float or np.array
          planetocentric latitude (in degrees)
     """
 
@@ -42,10 +42,10 @@ def oc2og(lon, lat, semi_major, semi_minor):
 
     Parameters
     ----------
-    lon : float
+    lon : float or np.array
           longitude 0 to 360 domain (in degrees)
 
-    lat : float
+    lat : float or np.array
           planetocentric latitude (in degrees)
 
     semi_major : float
@@ -56,10 +56,10 @@ def oc2og(lon, lat, semi_major, semi_minor):
 
     Returns
     -------
-    lon : float
+    lon : float or np.array
           longitude (in degrees)
 
-    lat : float
+    lat : float or np.array
           planetographic latitude (in degrees)
     """
 
@@ -86,8 +86,9 @@ def reproject(record, semi_major, semi_minor, source_proj, dest_proj, **kwargs):
 
     Parameters
     ----------
-    record : object
-             Pandas series object
+    record : array of np.array
+             Array containing the coordinates to reproject. 
+             Formatted like [[x1, x2, ..., xn], [y1, y2, ..., yn], [z1, z2, ..., zn]]
 
     semi_major : float
                  Radius from the center of the body to the equater
@@ -103,7 +104,7 @@ def reproject(record, semi_major, semi_minor, source_proj, dest_proj, **kwargs):
 
     Returns
     -------
-    : list
+    : np.arrays
       Transformed coordinates as y, x, z
 
     """

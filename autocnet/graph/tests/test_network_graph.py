@@ -3,6 +3,7 @@ import pytest
 import sys
 
 import pandas as pd
+from plio.io.io_controlnetwork import IsisControlNetwork
 
 from autocnet.io.db import model
 from autocnet.graph.network import NetworkCandidateGraph
@@ -14,31 +15,50 @@ if sys.platform.startswith("darwin"):
 
 @pytest.fixture()
 def cnet():
-    return pd.DataFrame.from_dict({
-            'id' : [1],
-            'pointType' : 2,
-            'serialnumber' : ['BRUH'],
-            'measureJigsawRejected': [False],
-            'sampleResidual' : [0.1],
-            'pointIgnore' : [False],
-            'pointJigsawRejected': [False],
-            'lineResidual' : [0.1],
-            'linesigma' : [0],
-            'samplesigma': [0],
-            'adjustedCovar' : [[]],
-            'apriorisample' : [0],
-            'aprioriline' : [0],
-            'line' : [1],
-            'sample' : [2],
-            'measureIgnore': [False],
-            'adjustedX' : [0],
-            'adjustedY' : [0],
-            'adjustedZ' : [0],
-            'aprioriX' : [0],
-            'aprioriY' : [0],
-            'aprioriZ' : [0],
-            'measureType' : [1]
-            })
+    return IsisControlNetwork.from_dict({
+            'id' : [1, 2, 3],
+            'pointType' : [2]*3,
+            'pointChoosername' : ['findfeatures']*3,
+            'pointDatetime' : ['YYYY-MM-DDT00:00:00']*3,
+            'pointEditLock': [False]*3,
+            'pointIgnore' : [False]*3,
+            'pointJigsawRejected': [False]*3,
+            'referenceIndex' : [0]*3,
+            'aprioriSurfPointSource': ['ground']*3,
+            'aprioriSurfPointSourceFile' : ['ground.file']*3,
+            'aprioriRadiusSource' : ['radius']*3, 
+            'aprioriRadiusSourceFile' : ['radius.file']*3, 
+            'latitudeConstrained' : [False]*3,
+            'longitudeConstrained' : [False]*3, 
+            'radiusConstrained' : [False]*3,
+            'aprioriX' : [1017046.81161667, -1402345.22133465, 103571.17894436],
+            'aprioriY' : [1017046.81161667, -1402345.22133465, 103571.17894436],
+            'aprioriZ' : [1014022.55349016, -1404707.80219809, 101009.09763132],
+            'aprioriCovar' : [[]]*3,
+            'adjustedX' : [0]*3,
+            'adjustedY' : [0]*3,
+            'adjustedZ' : [0]*3,
+            'adjustedCovar' : [[]]*3,
+            'pointLog' : [[]]*3,
+            'serialnumber' : ['SN1345', 'SN2348', 'SN9730'],
+            'measureType' : [1]*3,
+            'sample' : [2]*3,
+            'line' : [1]*3,
+            'sampleResidual' : [0.1]*3,
+            'lineResidual' : [0.1]*3,
+            'measureChoosername' : ['pointreg']*3,
+            'measureDatetime' : ['YYYY-MM-DDT00:00:00']*3,
+            'measureEditLock' : [False]*3,
+            'measureIgnore': [False]*3,
+            'measureJigsawRejected': [False]*3,
+            'diameter' : [1000]*3,
+            'apriorisample' : [0]*3,
+            'aprioriline' : [0]*3,
+            'samplesigma': [0]*3,
+            'linesigma' : [0]*3,
+            'measureLog' : [[]]*3
+            }) 
+
 
 """@pytest.mark.parametrize("image_data, expected_npoints", [({'id':1, 'serial': 'BRUH'}, 1)])
 def test_place_points_from_cnet(cnet, image_data, expected_npoints, ncg):
@@ -112,3 +132,24 @@ def test_selective_clear_db(ncg):
         assert len(res) == 1
         res = session.query(model.Points).all()
         assert len(res) == 0
+
+def test_cnet_to_db(ncg, cnet):
+    # check that the resulting DB DFs have same columns as corresponding Models
+    imgs = [model.Images(name='foo1', serial=cnet.iloc[0]['serialnumber']),
+            model.Images(name='foo2', serial=cnet.iloc[1]['serialnumber']),
+            model.Images(name='foo3', serial=cnet.iloc[2]['serialnumber'])]
+
+    with ncg.session_scope() as session:
+        session.add_all(imgs)
+
+    p_df, m_df = ncg.cnet_to_db(cnet)
+    
+    point_columns = model.Points.__table__.columns.keys()
+    measure_columns = model.Measures.__table__.columns.keys()
+    
+    for key in point_columns:
+        assert key in p_df.columns, f"column \'{key}\' not in points dataframe"
+    for key in measure_columns:
+        assert key in m_df.columns, f"column \'{key}\' not in measures dataframe"
+
+# TO DO: test the clear tables functionality on ncg.place_points_from_cnet

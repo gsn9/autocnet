@@ -2222,50 +2222,115 @@ class NetworkCandidateGraph(CandidateGraph):
                     except Exception as e:
                         warnings.warn(f'Failed to reset primary id sequence for table {t}')
 
-    def place_points_from_cnet(self, cnet):
+    def cnet_to_db(self, cnet):
+        """
+        Splits an isis control network into two subsets mirroring the points and measures
+        database table formats.
+
+        Parameters
+        ----------
+        cnet: str or IsisControlNetwork
+              The ISIS control network or path to the ISIS control network to be loaded.
+
+        Returns
+        -------
+        points: IsisControlNetwork
+                Subset of the ISIS controlnetwork formatted as io.db.model.Points table
+
+        measures: IsisControlNetwork
+                  Subset of the Isis controlnetwork formatted as io.db.model.Measures table
+        """
+
         semi_major, semi_minor = self.config["spatial"]["semimajor_rad"], self.config["spatial"]["semiminor_rad"]
 
         if isinstance(cnet, str):
             cnet = from_isis(cnet)
+        cnet = cnet.rename(columns={'id':'identifier', 
+                                    'measureChoosername': 'ChooserName',
+                                    'sampleResidual':'sampler', 
+                                    'lineResidual': 'liner'})
 
-        cnetpoints = cnet.groupby('id')
-        session = self.Session()
+        points = cnet.copy(deep=True) # this prevents Pandas value being set on copy of slice warnings
+        points.drop_duplicates(subset=['identifier'], inplace=True)
+        points.insert(0, 'id', list(range(1,len(points)+1)))
+        points[['overlapid','residuals', 'maxResidual']] = None
+        points[['cam_type']] = 'isis'
+        
+        points['apriori'] = [geoalchemy2.shape.from_shape(shapely.geometry.Point(x,y,z)) for x,y,z in zip(points['aprioriX'].values, points['aprioriY'].values, points['aprioriZ'].values)]
+        if (points['adjustedX'] == 0).all():
+            points['adjusted'] = points['apriori']
+            xyz_data = [points['aprioriX'].values, points['aprioriY'].values, points['aprioriZ'].values]
+        else:
+            points[['adjusted']] = [geoalchemy2.shape.from_shape(shapely.geometry.Point(x,y,z)) for x,y,z in zip(points['adjustedX'].values, points['adjustedY'].values, points['adjustedZ'].values)]
+            xyz_data = [points['adjustedX'].values, points['adjustedY'].values, points['adjustedZ'].values]      
 
-        for id, cnetpoint in cnetpoints:
-            def get_measures(row):
-                res = session.query(Images).filter(Images.serial == row.serialnumber).one()
-                return Measures(pointid=id,
-                         imageid=int(res.id), # Need to grab this
-                         measuretype=int(row.measureType),
-                         serial=row.serialnumber,
-                         sample=float(row['sample']),
-                         line=float(row['line']),
-                         sampler=float(row.sampleResidual),
-                         liner=float(row.lineResidual),
-                         ignore=row.measureIgnore,
-                         jigreject=row.measureJigsawRejected,
-                         aprioriline=float(row.aprioriline),
-                         apriorisample=float(row.apriorisample),
-                         linesigma=float(row.linesigma),
-                         samplesigma=float(row.samplesigma))
+        og = reproject(xyz_data, semi_major, semi_minor, 'geocent', 'latlon')
+        oc = og2oc(og[0], og[1], semi_major, semi_minor)
+        points['geom'] = [geoalchemy2.shape.from_shape(shapely.geometry.Point(lon, lat), srid=self.config['spatial']['latitudinal_srid']) for lon, lat in zip(oc[0], oc[1])]
 
-            measures = cnetpoint.apply(get_measures, axis=1)
+        cnet.insert(0, 'id', list(range(1,len(cnet)+1)))
+        pid_map = {ident: pid for ident, pid in zip(points['identifier'], points['id'])}
+        cnet['pointid']  = cnet.apply(lambda row: pid_map[row['identifier']], axis=1)
 
-            row = cnetpoint.iloc[0]
-            x,y,z= row.adjustedX, row.adjustedY, row.adjustedZ
-            lon_og, lat_og, alt = reproject([x, y, z], semi_major, semi_minor, 'geocent', 'latlon')
-            lon, lat = og2oc(lon_og, lat_og, semi_major, semi_minor)
+        with self.session_scope() as session:
+            imgs = session.query(Images.serial, Images.id).all()  
+        iid_map = {ii[0]: ii[1] for ii in imgs}
+        cnet['imageid'] = cnet.apply(lambda row: iid_map[row['serialnumber']], axis=1)
+ 
+        def GoodnessOfFit_value_extract(row):
+            mlog = row['measureLog']
+            if mlog:
+                for m in mlog:
+                    if m.messagetype.name == "GoodnessOfFit":
+                        return m.value
+            return None
 
-            point = Points(identifier=id,
-                           ignore=row.pointIgnore,
-                           apriori= shapely.geometry.Point(float(row.aprioriX), float(row.aprioriY), float(row.aprioriZ)),
-                           adjusted= shapely.geometry.Point(float(row.adjustedX),float(row.adjustedY),float(row.adjustedZ)),
-                           pointtype=float(row.pointType))
+        cnet['templateMetric'] = cnet.apply(GoodnessOfFit_value_extract, axis=1)
+        cnet['templateShift'] = cnet.apply(lambda row: np.sqrt((row['line']-row['aprioriline'])**2 + (row['sample']-row['apriorisample'])**2) if row['ChooserName'] != row['pointChoosername'] else 0, axis=1)
+        cnet['residual'] = np.sqrt(cnet['liner']**2+cnet['sampler']**2)
+        cnet['rms'] = np.sqrt(np.mean([cnet['liner']**2, cnet['sampler']**2], axis=0))
+       
+        cnet[['phaseError','phaseDiff','phaseShift']] = None
+        cnet['weight'] = None
 
-            point.measures = list(measures)
-            session.add(point)
-        session.commit()
-        session.close()
+        point_columns = Points.__table__.columns.keys()
+        measure_columns = Measures.__table__.columns.keys()
+        points = points[point_columns]
+        measures = cnet[measure_columns]
+
+        return points, measures
+
+    def place_points_from_cnet(self, cnet, clear_tables=True):
+        """
+        Loads points from a ISIS control network into an AutoCNet formatted database.
+
+        Parameters
+        ----------
+        cnet: str or IsisControlNetwork
+              The ISIS control network or path to the ISIS control network to be loaded.
+
+        clear_tables: boolean
+                  Clears enteries out of the points and measures database tables if True. 
+                  Appends the control network points and measures onto the current points 
+                  and measures database tables if False.
+        """
+
+        if isinstance(cnet, str):
+            cnet = from_isis(cnet)
+
+        points, measures = self.cnet_to_db(cnet)
+
+        engine = self.engine
+        with engine.connect() as connection:
+            # Execute an SQL COPY from a CSV buffer into the DB
+            
+            if engine.dialect.has_table(engine.connect(), 'points', schema='public') and clear_tables:
+                connection.execute('DROP TABLE measures, points;')
+                Points.__table__.create(bind=engine, checkfirst=True)
+                Measures.__table__.create(bind=engine, checkfirst=True)
+            
+            points.to_sql('points', connection, schema='public', if_exists='append', index=False, method=io_controlnetwork.copy_from_method)
+            measures.to_sql('measures', connection, schema='public', if_exists='append', index=False, method=io_controlnetwork.copy_from_method)
 
     @classmethod
     def from_cnet(cls, cnet, filelist, config):

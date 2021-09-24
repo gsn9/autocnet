@@ -97,6 +97,29 @@ ORDER BY measures."pointid", measures."id";
 
         return df
 
+def copy_from_method(table, conn, keys, data_iter, pre_truncate=False, fatal_failure=False):
+    """
+    Custom method for pandas.DataFrame.to_sql that will use COPY FROM
+    From: https://stackoverflow.com/questions/24084710/to-sql-sqlalchemy-copy-from-postgresql-engine
+        
+    This is follows the API specified by pandas.
+    """
+
+    dbapi_conn = conn.connection
+    cur = dbapi_conn.cursor()
+
+    s_buf = StringIO()
+    writer = csv_writer(s_buf, quoting=QUOTE_MINIMAL)
+    writer.writerows(data_iter)
+    s_buf.seek(0)
+
+    columns = ', '.join('"{}"'.format(k) for k in keys)
+    table_name = '{}.{}'.format(
+        table.schema, table.name) if table.schema else table.name
+
+    sql_query = 'COPY %s (%s) FROM STDIN WITH CSV' % (table_name, columns)
+    cur.copy_expert(sql=sql_query, file=s_buf)
+    return cur.rowcount
 
 def update_from_jigsaw(cnet, measures, engine, pointid_func=None):
     """
@@ -131,29 +154,6 @@ def update_from_jigsaw(cnet, measures, engine, pointid_func=None):
                   numeric ID back. This callable is used to unmunge the id.
     """
 
-    def copy_from_method(table, conn, keys, data_iter, pre_truncate=False, fatal_failure=False):
-        """
-        Custom method for pandas.DataFrame.to_sql that will use COPY FROM
-        From: https://stackoverflow.com/questions/24084710/to-sql-sqlalchemy-copy-from-postgresql-engine
-        
-        This is follows the API specified by pandas.
-        """
-
-        dbapi_conn = conn.connection
-        cur = dbapi_conn.cursor()
-
-        s_buf = StringIO()
-        writer = csv_writer(s_buf, quoting=QUOTE_MINIMAL)
-        writer.writerows(data_iter)
-        s_buf.seek(0)
-
-        columns = ', '.join('"{}"'.format(k) for k in keys)
-        table_name = '{}.{}'.format(
-            table.schema, table.name) if table.schema else table.name
-
-        sql_query = 'COPY %s (%s) FROM STDIN WITH CSV' % (table_name, columns)
-        cur.copy_expert(sql=sql_query, file=s_buf)
-        return cur.rowcount
 
     # Get the PID back from the id.
     if pointid_func:

@@ -36,9 +36,11 @@ release.
 
 ### Added
 - Added a mutual information matcher [#559](https://github.com/USGS-Astrogeology/autocnet/pull/559)
+- Added residual column information to the Points model
 
 ### Changed
 - `geom_match_simple` defaults to a 3rd order warp for interpolation
+- Speed improvements for place_points_from_cnet dependent on COPY method instead of ORM update
 
 ### Fixed
 - `update_from_jigsaw` failures due to stale code. Now uses a conntext on the engine to ensure closure
@@ -59,3 +61,5 @@ release.
 - Image to ground to support multiple input types with proper output type handling #580
 - Support for ISIS special pixels in image data #577
 - Fix for no correlation map returned from `geom_match_simple` #556
+
+
