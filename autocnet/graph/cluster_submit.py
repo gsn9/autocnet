@@ -7,6 +7,9 @@ import json
 import sys
 import warnings
 
+from io import StringIO 
+from contextlib import redirect_stdout
+
 from redis import StrictRedis
 
 from autocnet.graph.network import NetworkCandidateGraph
@@ -15,6 +18,7 @@ from autocnet.graph.edge import NetworkEdge
 from autocnet.io.db.model import Points, Measures, Overlay
 from autocnet.utils.utils import import_func
 from autocnet.utils.serializers import JsonEncoder, object_hook
+from autocnet.io.db.model import JobsHistory
 
 
 def parse_args():  # pragma: no cover
@@ -167,7 +171,7 @@ def manage_messages(args, queue):
     msg = transfer_message_to_work_queue(queue,
                                          args['processing_queue'],
                                          args['working_queue'])
-
+    
     if msg is None:
         warnings.warn('Expected to process a cluster job, but the message queue is empty.')
         return
@@ -175,14 +179,32 @@ def manage_messages(args, queue):
     # The key to remove from the working queue is the message. Essentially, find this element
     # in the list where the element is the JSON representation of the message. Maybe swap to a hash?
     remove_key = msg
-
+    
     #Convert the message from binary into a dict
-    msg = json.loads(msg, object_hook=object_hook)
+    msgdict = json.loads(msg, object_hook=object_hook)
 
-    # Apply the algorithm
-    response = process(msg)
-    # Should go to a logger someday!
-    print(response)
+    # should replace this with some logging logic later
+    # rather than redirecting std out
+    stdout = StringIO()
+    with redirect_stdout(stdout):
+        # Apply the algorithm
+        response = process(msgdict)
+        # Should go to a logger someday!
+        print(response)
+    
+    out = stdout.getvalue()
+    # print to get everything on the logs in the directory
+    print(out)
+
+    serializedDict = json.loads(msg)
+    results  = msgdict['results'] if msgdict['results'] else [{"status" : "success"}]
+    success = True if "success" in results[0]["status"].split(" ")[0].lower() else False
+
+    jh = JobsHistory(jobId=int(os.environ["SLURM_JOB_ID"]), functionName=msgdict["func"], args={"args" : serializedDict["args"], "kwargs": serializedDict["kwargs"]}, results=msgdict["results"], logs=out, success=success)
+    
+    with response['kwargs']['Session']() as session:
+        session.add(jh)
+        session.commit()
 
     finalize_message_from_work_queue(queue, args['working_queue'], remove_key)
 
@@ -191,5 +213,5 @@ def main():  # pragma: no cover
     # Get the message
     queue = StrictRedis(host=args['host'], port=args['port'], db=0)
     manage_messages(args, queue)
-
+    
 

@@ -2117,6 +2117,7 @@ class NetworkCandidateGraph(CandidateGraph):
 
         sourceimages = sourcesession.execute(query_string).fetchall()
         # Change for SQLAlchemy >= 1.4, results are now row objects
+        
         sourceimages = [sourceimage._asdict() for sourceimage in sourceimages]
         with self.session_scope() as destinationsession:
             destinationsession.execute(Images.__table__.insert(), sourceimages)

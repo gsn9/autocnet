@@ -1,4 +1,6 @@
 import json
+import os
+from unittest import mock
 from unittest.mock import patch
 
 import numpy as np
@@ -8,7 +10,7 @@ from autocnet.utils.serializers import JsonEncoder, object_hook
 from autocnet.graph import cluster_submit
 from autocnet.graph.node import NetworkNode
 from autocnet.graph.edge import NetworkEdge
-from autocnet.io.db.model import Points
+from autocnet.io.db.model import Points, JobsHistory
 
 
 @pytest.fixture
@@ -20,44 +22,72 @@ def args():
 @pytest.fixture
 def simple_message():
     return json.dumps({"job":"do some work",
-                       "success":False}, cls=JsonEncoder
+                       'args' : ["arg1", "arg2"],
+                       'kwargs' : {"k1" : "foo", "k2" : "bar"},
+                       'func':'autocnet.place_points',
+                       'results' :[{"status" : 'success'}] }, cls=JsonEncoder
     )
 
 @pytest.fixture
 def complex_message():
     return json.dumps({'job':'do some complex work',
                       'arr':np.ones(5),
-                      'func':lambda x:x}, cls=JsonEncoder)
+                      'results' :[{"status" : 'success'}], 
+                      'args' : ["arg1", "arg2"],
+                      'kwargs' : {"k1" : "foo", "k2" : "bar"},
+                      'func':'autocnet.place_points'}, cls=JsonEncoder)
 
-def test_manage_simple_messages(args, queue, simple_message, mocker, capfd):
+def test_manage_simple_messages(args, queue, simple_message, mocker, capfd, ncg):
     queue.rpush(args['processing_queue'], simple_message)
 
-    response_msg = {'success':True, 'results':'Things were good.'}
+    response_msg = {'success':True, 'results':'Things were good.', 'kwargs' : {'Session' : ncg.Session}}
     mocker.patch('autocnet.graph.cluster_submit.process', return_value=response_msg)
-    
+    mocker.patch.dict(os.environ, {"SLURM_JOB_ID": "1000"}) 
+
     cluster_submit.manage_messages(args, queue)
     
     # Check that logging to stdout is working
     out, err = capfd.readouterr()
-    assert out == str(response_msg) + '\n' 
+    assert out.strip() == str(response_msg).strip() 
 
     # Check that the messages are finalizing
     assert queue.llen(args['working_queue']) == 0
 
-def test_manage_complex_messages(args, queue, complex_message, mocker, capfd):
+def test_manage_complex_messages(args, queue, complex_message, mocker, capfd, ncg):
     queue.rpush(args['processing_queue'], complex_message)
 
-    response_msg = {'success':True, 'results':'Things were good.'}
+    response_msg = {'success':True, 'results':'Things were good.', 'kwargs' : {'Session' : ncg.Session}}
     mocker.patch('autocnet.graph.cluster_submit.process', return_value=response_msg)
-    
+    mocker.patch.dict(os.environ, {"SLURM_JOB_ID": "1000"}) 
+ 
     cluster_submit.manage_messages(args, queue)
     
     # Check that logging to stdout is working
     out, err = capfd.readouterr()
-    assert out == str(response_msg) + '\n' 
+    assert out.strip() == str(response_msg).strip()
 
     # Check that the messages are finalizing
     assert queue.llen(args['working_queue']) == 0
+
+
+def test_job_history(args, queue, complex_message, mocker, capfd, ncg):
+    queue.rpush(args['processing_queue'], complex_message)
+
+    response_msg = {'success':True, 
+                    'args' : ["arg1", "arg2"],
+                    'kwargs' : {"k1" : "foo", "k2" : "bar", "Session" : ncg.Session}}
+    mocker.patch('autocnet.graph.cluster_submit.process', return_value=response_msg)
+    mocker.patch.dict(os.environ, {"SLURM_JOB_ID": "1000"}) 
+    
+    cluster_submit.manage_messages(args, queue)
+    
+    message_json = json.loads(complex_message)
+    with ncg.Session() as session: 
+        resp = session.query(JobsHistory).first()
+        assert resp.functionName == "autocnet.place_points"
+        assert resp.jobId == 1000
+        assert resp.args == {"args" : message_json["args"], "kwargs" : message_json["kwargs"]}
+        assert resp.logs.strip() == str(response_msg).strip()
 
 def test_transfer_message_to_work_queue(args, queue, simple_message):
     queue.rpush(args['processing_queue'], simple_message)

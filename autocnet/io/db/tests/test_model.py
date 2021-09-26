@@ -34,6 +34,16 @@ def test_cameras_exists(tables):
 def test_measures_exists(tables):
     assert model.Measures.__tablename__ in tables
 
+def test_points_history_exists(tables):
+    assert model.PointsHistory.__tablename__ in tables
+
+def test_measures_history_exists(tables):
+    assert model.MeasuresHistory.__tablename__ in tables
+
+def test_job_history_exists(tables):
+    assert model.JobsHistory.__tablename__ in tables
+
+
 def test_create_camera_without_image(session):
     with pytest.raises(sqlalchemy.exc.IntegrityError):
         model.Cameras.create(session, **{'image_id':1})
@@ -128,8 +138,78 @@ def test_update_point_geom(session, data, new_adjusted, expected):
     resp = session.query(model.Points).filter(model.Points.id == p.id).first()
     assert resp.geom == expected
 
-def test_measures_exists(tables):
-    assert model.Measures.__tablename__ in tables
+def test_point_trigger(session):
+    original = 3
+    new_type = 2
+
+    data = {'pointtype':original, 'adjusted' : Point(1,10000,1)}
+
+    with session as s:
+        p = model.Points.create(s, **data)
+
+        p.pointtype = new_type
+        s.commit()
+        s.delete(p)
+        s.commit()
+
+        resp = session.query(model.PointsHistory).filter(model.PointsHistory.fk == p.id)
+        
+        assert resp[0].event == "insert"
+        assert resp[0].before == None
+        assert resp[0].after["pointType"] == original 
+
+        assert resp[1].event == "update"
+        assert resp[1].before['pointType'] == original
+        assert resp[1].after["pointType"] == new_type
+
+        assert resp[2].event == "delete"
+        assert resp[2].before['pointType'] == new_type
+        assert resp[2].after == None
+        s.close()
+
+@pytest.mark.xfail(reason="Unknown issue on GitHub actions, passes locally")
+def test_measure_trigger(session):
+    original = 3
+    new_type = 2
+
+    with session as s:     
+        point_data = {'pointtype':original, 'adjusted' : Point(1,10000,1)}
+        p = model.Points.create(s, **point_data)
+
+        measure_data = {'id' : 100 ,'sample': original, 'line': 10, 'pointid': p.id, 'serial': 'measure', '_measuretype' : 2}
+        m = model.Measures(**measure_data)
+        s.add(m)
+        s.commit()
+
+        measures = s.query(model.Measures).all()
+        points = s.query(model.Points).all()
+        print(measures, len(measures))
+        print(points, len(points))
+
+        m.sample = new_type
+        s.commit()
+        s.delete(p) 
+        s.delete(m)
+        s.commit()
+ 
+    measures = session.query(model.Measures).all()
+    points = session.query(model.Points).all()
+    print(measures, len(measures))
+    print(points, len(points))
+
+    resp = session.query(model.MeasuresHistory).filter(model.MeasuresHistory.fk == m.id).all()
+    print(resp, len(resp))
+    assert resp[0].event == "insert"
+    assert resp[0].before == None
+    assert resp[0].after["sample"] == original 
+
+    assert resp[1].event == "update"
+    assert resp[1].before['sample'] == original
+    assert resp[1].after["sample"] == new_type
+
+    assert resp[2].event == "delete"
+    assert resp[2].before['sample'] == new_type
+    assert resp[2].after == None
 
 def test_null_footprint(session):
     i = model.Images.create(session, geom=None,

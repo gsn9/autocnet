@@ -5,7 +5,8 @@ import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import (Column, String, Integer, Float, \
                         ForeignKey, Boolean, LargeBinary, \
-                        UniqueConstraint, event)
+                        UniqueConstraint, event, DateTime
+                        )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy_utils import database_exists, create_database
@@ -609,8 +610,42 @@ class Measures(BaseMixin, Base):
             v = MeasureType(v)
         self._measuretype = v
 
+
+class JobsHistory(BaseMixin, Base): 
+    __tablename__ = 'jobs_history'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    jobId = Column("jobId", Integer)
+    functionName = Column("functionName", String)
+    args = Column(JSONB)
+    results = Column(JSONB)
+    logs = Column(String)
+    success = Column(Boolean, default=False)
+
+
+class MeasuresHistory(BaseMixin, Base): 
+    __tablename__ = 'measures_history'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fk = Column(Integer)
+    eventTime = Column(DateTime)
+    executedBy = Column(String)
+    event = Column(String)
+    before = Column(JSONB)
+    after = Column(JSONB)
+
+
+class PointsHistory(BaseMixin, Base): 
+    __tablename__ = 'points_history'
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    fk = Column(Integer)
+    eventTime = Column(DateTime)
+    executedBy = Column(String)
+    event = Column(String)
+    before = Column(JSONB)
+    after = Column(JSONB)
+
+
 def try_db_creation(engine, config):
-    from autocnet.io.db.triggers import valid_point_function, valid_point_trigger, valid_geom_function, valid_geom_trigger, ignore_image_function, ignore_image_trigger
+    from autocnet.io.db import triggers
 
     # Create the database
     if not database_exists(engine.url):
@@ -619,12 +654,19 @@ def try_db_creation(engine, config):
     # Trigger that watches for points that should be active/inactive
     # based on the point count.
     if not sqlalchemy.inspect(engine).has_table("points"):
-        event.listen(Base.metadata, 'before_create', valid_point_function)
-        event.listen(Measures.__table__, 'after_create', valid_point_trigger)
-        event.listen(Base.metadata, 'before_create', valid_geom_function)
-        event.listen(Images.__table__, 'after_create', valid_geom_trigger)
-        event.listen(Base.metadata, 'before_create', ignore_image_function)
-        event.listen(Images.__table__, 'after_create', ignore_image_trigger)
+        event.listen(Base.metadata, 'before_create', triggers.valid_point_function)
+        event.listen(Measures.__table__, 'after_create', triggers.valid_point_trigger)
+        event.listen(Base.metadata, 'before_create', triggers.valid_geom_function)
+        event.listen(Images.__table__, 'after_create', triggers.valid_geom_trigger)
+        event.listen(Base.metadata, 'before_create', triggers.ignore_image_function)
+        event.listen(Images.__table__, 'after_create', triggers.ignore_image_trigger)
+        event.listen(Points.__table__, 'before_create', triggers.jsonb_delete_func)
+ 
+        for ddl in triggers.generate_history_triggers(Measures):
+            event.listen(Measures.__table__, 'after_create', ddl)
+
+        for ddl in triggers.generate_history_triggers(Points):
+            event.listen(Points.__table__, 'after_create', ddl)
 
     Base.metadata.bind = engine
 
@@ -645,4 +687,8 @@ def try_db_creation(engine, config):
                                      Edges.__table__, Costs.__table__, Matches.__table__,
                                      Cameras.__table__, Points.__table__,
                                      Measures.__table__, Images.__table__,
-                                     Keypoints.__table__, CandidateGroundPoints.__table__])
+                                     Keypoints.__table__, CandidateGroundPoints.__table__,
+                                     JobsHistory.__table__, MeasuresHistory.__table__, PointsHistory.__table__])
+
+
+
