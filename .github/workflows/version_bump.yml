@@ -64,14 +64,10 @@ jobs:
             
             - name: Commit bump
               if: steps.bump-type.outputs.bump-type != 'null'
-              uses: EndBug/add-and-commit@v7
+              uses: EndBug/add-and-commit@v7.3.0
               with:
-                  branch: ${{ github.event.pull_request.base.ref }}
                   message: 'Bump version to ${{ steps.new-version.outputs.new-version }}'
-                  github-token: ${{ secrets.GITHUB_TOKEN }}
-                  author_name: github-actions[bot]
-                  author_email: github-actions[bot]@users.noreply.github.com
-              env:
-                  # This is necessary in order to push a commit to the repo
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Leave this line unchanged
+                  committer_name: GitHub Actions
+                  committer_email: 41898282+github-actions[bot]@users.noreply.github.com
+
 
