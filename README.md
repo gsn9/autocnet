@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/AutoCNet_Logo.svg" alt="AutoCNet" width=200> 
+</p>
+
 # AutoCNet
 
 [![Gitter Chat](https://badges.gitter.im/USGS-Astrogeology/autocnet.svg)](https://gitter.im/USGS-Astrogeology/autocnet?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
