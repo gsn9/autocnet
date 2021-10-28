@@ -1658,8 +1658,10 @@ class NetworkCandidateGraph(CandidateGraph):
             on='edge',
             args=(),
             walltime='01:00:00',
+            jobname='AutoCNet',
             chunksize=1000,
             arraychunk=25,
+            ntasks=1,
             filters={},
             query_string='',
             reapply=False,
@@ -1705,6 +1707,14 @@ class NetworkCandidateGraph(CandidateGraph):
         arraychunk : int
                      The number of concurrent jobs to run per job array. e.g. chunksize=100 and
                      arraychunk=25 gives the job array 1-100%25
+
+        ntasks : int
+                 The number of tasks, distributed across the cluster on some set of nodes to be run.
+                 When running apply with ntasks, set ntasks to some integer greater then 1. arraychunk and
+                 chunksize arguments will then be ignored. In this mode, a number of non-communicating 
+                 CPUs equal to ntasks are allocated and these CPUs run jobs. Changing from arrays to ntasks
+                 also likely requires increasing the walltime of the job significantly since less jobs
+                 will need to run for a longer duration.
 
         filters : dict
                   Of simple filters to apply on database rows where the key is the attribute and
@@ -1810,20 +1820,26 @@ class NetworkCandidateGraph(CandidateGraph):
         isissetup = f'export ISISROOT={isisroot} && export ISISDATA={isisdata}'
         condasetup = f'conda activate {condaenv}'
         job = f'acn_submit -r={rhost} -p={rport} {processing_queue} {self.working_queue}'
-        command = f'{condasetup} && {isissetup} && {job}'
+        if ntasks > 1:
+            job += ' --queue'  # Use queue mode where jobs run until the queue is empty
+        command = f'{condasetup} && {isissetup} && srun {job}'
 
         if queue == None:
             queue = self.config['cluster']['queue']
 
         submitter = Slurm(command,
-                     job_name='AutoCNet',
+                     job_name=jobname,
                      mem_per_cpu=self.config['cluster']['processing_memory'],
                      time=walltime,
                      partition=queue,
+                     ntasks=ntasks,
                      output=log_dir+f'/autocnet.{function}-%j')
-        job_str = submitter.submit(array='1-{}%{}'.format(job_counter,arraychunk),
-                                   chunksize=chunksize,
-                                   exclude=exclude)
+        if ntasks > 1:
+            job_str = submitter.submit(exclude=exclude)
+        else:
+            job_str = submitter.submit(array='1-{}%{}'.format(job_counter,arraychunk),
+                                    chunksize=chunksize,
+                                    exclude=exclude)
         return job_str
 
     def generic_callback(self, msg):

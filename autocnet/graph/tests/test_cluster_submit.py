@@ -16,7 +16,8 @@ from autocnet.io.db.model import Points, JobsHistory
 @pytest.fixture
 def args():
     arg_dict = {'working_queue':'working',
-                'processing_queue':'processing'}
+                'processing_queue':'processing',
+                'queue':False}
     return arg_dict
 
 @pytest.fixture

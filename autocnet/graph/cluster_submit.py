@@ -20,11 +20,13 @@ from autocnet.utils.utils import import_func
 from autocnet.utils.serializers import JsonEncoder, object_hook
 from autocnet.io.db.model import JobsHistory
 
-
 def parse_args():  # pragma: no cover
     parser = argparse.ArgumentParser()
     parser.add_argument('-r', '--host', help='The host URL for the redis queue to to pull messages from.')
     parser.add_argument('-p', '--port', help='The port for used by redis.')
+    parser.add_argument('-q', '--queue', default=False, action='store_true',
+                        help='If passed, run in queue mode, where this job runs until either \
+                              walltime is hit or the queue that is being processed is empty.')
     parser.add_argument('processing_queue', help='The name of the processing queue to draw messages from.')
     parser.add_argument('working_queue', help='The name of the queue to push messages to while they process.')
 
@@ -55,7 +57,6 @@ def _instantiate_row(msg, ncg):
     """
     # Get the dict mapping iterable keyword types to the objects
     objdict = ncg.apply_iterable_options
-    rowid = msg['id']
     obj = objdict[msg['along']]
     with ncg.session_scope() as session:
         res = session.query(obj).filter(getattr(obj, 'id')==msg['id']).one()
@@ -167,51 +168,64 @@ def manage_messages(args, queue):
             A py-Redis queue object
 
     """
-    # Pop the message from the left queue and push to the right queue; atomic operation
-    msg = transfer_message_to_work_queue(queue,
-                                         args['processing_queue'],
-                                         args['working_queue'])
+    processing = True
     
-    if msg is None:
-        warnings.warn('Expected to process a cluster job, but the message queue is empty.')
-        return
+    while processing:
+        # Pop the message from the left queue and push to the right queue; atomic operation
+        msg = transfer_message_to_work_queue(queue,
+                                            args['processing_queue'],
+                                            args['working_queue'])
+        
+        if msg is None:
+            if args['queue'] == False:
+                warnings.warn('Expected to process a cluster job, but the message queue is empty.')
+                return
+            elif args['queue'] == True:
+                print(f'Completed processing from queue: {queue}.')
+                return
 
-    # The key to remove from the working queue is the message. Essentially, find this element
-    # in the list where the element is the JSON representation of the message. Maybe swap to a hash?
-    remove_key = msg
-    
-    #Convert the message from binary into a dict
-    msgdict = json.loads(msg, object_hook=object_hook)
+        # The key to remove from the working queue is the message. Essentially, find this element
+        # in the list where the element is the JSON representation of the message. Maybe swap to a hash?
+        remove_key = msg
+        
+        #Convert the message from binary into a dict
+        msgdict = json.loads(msg, object_hook=object_hook)
 
-    # should replace this with some logging logic later
-    # rather than redirecting std out
-    stdout = StringIO()
-    with redirect_stdout(stdout):
-        # Apply the algorithm
-        response = process(msgdict)
-        # Should go to a logger someday!
-        print(response)
-    
-    out = stdout.getvalue()
-    # print to get everything on the logs in the directory
-    print(out)
+        # should replace this with some logging logic later
+        # rather than redirecting std out
+        stdout = StringIO()
+        with redirect_stdout(stdout):
+            # Apply the algorithm
+            response = process(msgdict)
+            # Should go to a logger someday!
+            print(response)
 
-    serializedDict = json.loads(msg)
-    results  = msgdict['results'] if msgdict['results'] else [{"status" : "success"}]
-    success = True if "success" in results[0]["status"].split(" ")[0].lower() else False
+        out = stdout.getvalue()
+        # print to get everything on the logs in the directory
+        print(out)
 
-    jh = JobsHistory(jobId=int(os.environ["SLURM_JOB_ID"]), functionName=msgdict["func"], args={"args" : serializedDict["args"], "kwargs": serializedDict["kwargs"]}, results=msgdict["results"], logs=out, success=success)
-    
-    with response['kwargs']['Session']() as session:
-        session.add(jh)
-        session.commit()
+        sys.stdout.flush()
+        stdout.flush()
 
-    finalize_message_from_work_queue(queue, args['working_queue'], remove_key)
+        #serializedDict = json.loads(msg)
+        #results  = msgdict['results'] if msgdict['results'] else [{"status" : "success"}]
+        #success = True if "success" in results[0]["status"].split(" ")[0].lower() else False
+
+        #jh = JobsHistory(jobId=int(os.environ["SLURM_JOB_ID"]), functionName=msgdict["func"], args={"args" : serializedDict["args"], "kwargs": serializedDict["kwargs"]}, results=msgdict["results"], logs=out, success=success)
+        
+        #with response['kwargs']['Session']() as session:
+            #session.add(jh)
+            #session.commit()
+
+        finalize_message_from_work_queue(queue, args['working_queue'], remove_key)
+
+        # Process only a single job, else draw the next message off the queue if available.
+        if args['queue'] == False:
+            processing = False
+        
 
 def main():  # pragma: no cover
     args = vars(parse_args())
     # Get the message
     queue = StrictRedis(host=args['host'], port=args['port'], db=0)
     manage_messages(args, queue)
-    
-

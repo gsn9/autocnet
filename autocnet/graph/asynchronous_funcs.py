@@ -1,11 +1,12 @@
 import json
 import time
 
-from sqlalchemy import insert, update
+from sqlalchemy import insert
 from sqlalchemy.sql.expression import bindparam
 
 from autocnet.io.db.model import Points, Measures
 from autocnet.utils.serializers import object_hook
+from autocnet.transformation.spatial import reproject, og2oc
 
 def watch_insert_queue(queue, queue_name, counter_name, engine, stop_event, sleep_time=5):
     """
@@ -57,7 +58,8 @@ def watch_insert_queue(queue, queue_name, counter_name, engine, stop_event, slee
         measures = []
         
         # Pull the SRID dynamically from the model (database)
-        srid = Points.rectangular_srid
+        rect_srid = Points.rectangular_srid
+        lat_srid = Points.latitudinal_srid
 
         for i in range(0, read_length):
             msg = json.loads(queue.lpop(queue_name), object_hook=object_hook)
@@ -68,8 +70,17 @@ def watch_insert_queue(queue, queue_name, counter_name, engine, stop_event, slee
 
                 # Since this avoids the ORM, need to map the table names manually
                 msg['pointType'] = msg['pointtype']  
-                msg['adjusted'] = f'SRID={srid};' + msg["adjusted"].wkt  # Geometries go in as EWKT
-                
+                adjusted = msg['adjusted']
+            
+                msg['adjusted'] = f'SRID={rect_srid};' + adjusted.wkt  # Geometries go in as EWKT
+                msg['apriori'] = f'SRID={rect_srid};' + adjusted.wkt
+
+                lon_og, lat_og, _ = reproject([adjusted.x, adjusted.y, adjusted.z],
+                                    Points.semimajor_rad, Points.semiminor_rad,
+                                    'geocent', 'latlon')
+                lon, lat = og2oc(lon_og, lat_og, Points.semimajor_rad, Points.semiminor_rad)
+                msg['geom'] = f'SRID={lat_srid};Point({lon} {lat})' 
+
                 # Measures are removed and manually added later
                 point_measures = msg.pop('measures', [])
                 if point_measures:
