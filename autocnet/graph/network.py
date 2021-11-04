@@ -310,6 +310,26 @@ class CandidateGraph(nx.Graph):
         """
         return self.nodes[node_index]['data']['image_name']
 
+    def get_index(self, image_name):
+        """
+        Get the node index using the full or partial image name.
+
+        Parameters
+        ----------
+        image_name : str
+                     That is matched using a simple 'in' check to 
+                     node['image_name']
+        
+        Returns  
+        -------
+        i : int
+            The node index
+        """
+
+        for i, node in self.nodes(data='data'):
+            if image_name in node['image_name']:
+                return i
+
     def get_matches(self, clean_keys=[]):
         matches = []
         for s, d, e in self.edges_iter(data=True):
@@ -1642,6 +1662,8 @@ class NetworkCandidateGraph(CandidateGraph):
         return len(res)
 
     def _push_iterable_message(self, iterable, function, walltime, args, kwargs):
+        if not iterable:  # the list is empty...
+            raise ValueError('iterable is not an iterable object, e.g., a list or set')
         for job_counter, item in enumerate(iterable):
             msg = {'along':item,
                     'func':function,
@@ -1912,8 +1934,6 @@ class NetworkCandidateGraph(CandidateGraph):
                                         lonsigma,
                                         radsigma,
                                         self.config['spatial']['semimajor_rad'])
-        
-        print("df shape: ", df.shape)
 
         if flistpath is None:
             flistpath = os.path.splitext(path)[0] + '.lis'

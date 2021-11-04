@@ -229,3 +229,6 @@ def main():  # pragma: no cover
     # Get the message
     queue = StrictRedis(host=args['host'], port=args['port'], db=0)
     manage_messages(args, queue)
+    
+if __name__ == '__main__':
+    main()

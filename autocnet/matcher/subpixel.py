@@ -1,3 +1,4 @@
+from collections import defaultdict
 import json
 from math import modf, floor
 import time
@@ -10,9 +11,10 @@ import numbers
 
 import sys
 
+import cv2
+
 from skimage import transform as tf
-from skimage import data
-from skimage import registration
+from skimage import registration 
 from skimage import filters
 from scipy import fftpack
 
@@ -28,7 +30,8 @@ from PIL import Image
 from autocnet.matcher.naive_template import pattern_match, pattern_match_autoreg
 from autocnet.matcher.mutual_information import mutual_information_match
 from autocnet.matcher import ciratefi
-from autocnet.spatial import isis
+from autocnet.matcher.mutual_information import mutual_information
+from autocnet.spatial import isis 
 from autocnet.io.db.model import Measures, Points, Images, JsonEncoder
 from autocnet.graph.node import NetworkNode
 from autocnet.transformation import roi
@@ -494,27 +497,23 @@ def subpixel_template_classic(sx, sy, dx, dy,
     # In ISIS source image is the search and destination image is the pattern.
     # In ISIS the search is CTX and the pattern is THEMIS
     # So the data that are being used are swapped between autocnet and ISIS.
-
-    print('source image avg: ', s_img.mean())  #THEMIS
-    print('dest image avg: ', d_img.mean())  # CTX
-
     s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
     d_roi = roi.Roi(d_img, dx, dy, size_x=template_size[0], size_y=template_size[1])
 
-    print('Source: ', sx, sy, d_roi.x, d_roi.y)
+    """print('Source: ', sx, sy, d_roi.x, d_roi.y)
     print('Destination ',dx, dy, s_roi.x, s_roi.y )
 
     print('d shape', d_roi.clip().shape)
     print('d mean: ', d_roi.clip().mean())
-    print(f'd mm: {d_roi.clip().min()} {d_roi.clip().max()}')
+    print(f'd mm: {d_roi.clip().min()} {d_roi.clip().max()}')"""
     #print(f'{len(isis.get_isis_special_pixels(d_roi.clip()))} chip sps : ', isis.get_isis_special_pixels(d_roi.clip()))
 
     s_image = s_roi.clip()
     d_template = d_roi.clip()
 
-    print('s shape', s_image.shape)
+    """print('s shape', s_image.shape)
     print('s mean: ', s_image.mean())
-    print(f's mm: {s_image.min()} {s_image.max()}')
+    print(f's mm: {s_image.min()} {s_image.max()}')"""
     #print(f'{len(isis.get_isis_special_pixels(s_image))} chip sps: ', isis.get_isis_special_pixels(s_image))
 
     if d_roi.variance == 0:
@@ -525,7 +524,8 @@ def subpixel_template_classic(sx, sy, dx, dy,
         return None, None, None, None
 
     shift_x, shift_y, metrics, corrmap = func(d_template.astype('float32'), s_image.astype('float32'), **kwargs)
-
+    if shift_x is None:
+        return None, None, None, None
     # Apply the shift and return
     dx = d_roi.x - shift_x
     dy = d_roi.y - shift_y
@@ -935,8 +935,8 @@ def geom_match_simple(base_cube,
         plt.show()
     # Run through one step of template matching then one step of phase matching
     # These parameters seem to work best, should pass as kwargs later
-    print('dst_arr mean: ', dst_arr.mean())
-    print(f'dst_arr mm: {dst_arr.min()} {dst_arr.max()}')
+    #print('dst_arr mean: ', dst_arr.mean())
+    #print(f'dst_arr mm: {dst_arr.min()} {dst_arr.max()}')
     #print(f'special pixels: ', isis.get_isis_special_pixels(dst_arr))
 
     if preprocess:
@@ -993,7 +993,6 @@ def geom_match_simple(base_cube,
         plt.show()
 
     return sample, line, dist, metric, temp_corrmap
-
 
 def geom_match_classic(base_cube,
                        input_cube,
@@ -1162,7 +1161,6 @@ def geom_match_classic(base_cube,
 
     return sample, line, dist, metric, temp_corrmap
 
-
 def geom_match(destination_cube,
                source_cube,
                bcenter_x,
@@ -1311,7 +1309,6 @@ def geom_match(destination_cube,
     dist = np.linalg.norm([center_x-x, center_y-y])
     return x, y, dist, metric, corrmap
 
-
 def subpixel_register_measure(measureid,
                               subpixel_template_kwargs={},
                               size_x=100, size_y=100,
@@ -1432,7 +1429,6 @@ def subpixel_register_measure(measureid,
 
 
     return resultlog
-
 
 def subpixel_register_point(pointid,
                             cost_func=lambda x,y: 1/x**2 * y,
@@ -1630,7 +1626,6 @@ def subpixel_register_point(pointid,
         t5 = time.time()
         print(f'Database update took {t5-t4} seconds.')
     return resultlog
-
 
 def subpixel_register_points(subpixel_template_kwargs={'image_size':(251,251)},
                              cost_kwargs={},
@@ -1915,8 +1910,7 @@ def estimate_logpolar_transform(img1, img2, low_sigma=0.5, high_sigma=30, verbos
 
     tf_rotate_from_center = (tf_shift + (tf_rotate + tf_shift_inv))
     return tf.SimilarityTransform((tf_rotate_from_center + tf_scale)._inv_matrix)
-
-
+       
 def fourier_mellen(img1, img2, verbose=False, phase_kwargs={}):
     """
     Iterative phase registration using a log-polar projection to estimate an affine for scale and roation invariance.
@@ -1987,3 +1981,667 @@ def fourier_mellen(img1, img2, verbose=False, phase_kwargs={}):
             ax[3].axvline(x=newx, color="red", linestyle="-", alpha=1, linewidth=1)
 
     return newx, newy, error
+
+def estimate_affine_transformation(base_cube,
+                                   input_cube,
+                                   bcenter_x,
+                                   bcenter_y,
+                                   size_x=60,
+                                   size_y=60):
+    """
+    Using the a priori sensor model, project corner and center points from the base_cube into
+    the input_cube and use these points to estimate an affine transformation.
+
+    Parameters
+    ----------
+    base_cube:  plio.io.io_gdal.GeoDataset
+                source image
+    input_cube: plio.io.io_gdal.GeoDataset
+                destination image; gets matched to the source image
+    bcenter_x:  int
+                sample location of source measure in base_cube
+    bcenter_y:  int
+                line location of source measure in base_cube
+    size_x:     int
+                half-height of the subimage used in the affine transformation
+    size_y:     int
+                half-width of the subimage used in affine transformation
+
+    Returns
+    -------
+    affine : object
+             The affine transformation object
+
+    """
+    t1 = time.time()
+    if not isinstance(input_cube, GeoDataset):
+        raise Exception(f"Input cube must be a geodataset obj, but is type {type(input_cube)}.")
+    if not isinstance(base_cube, GeoDataset):
+        raise Exception(f"Match cube must be a geodataset obj, but is type {type(base_cube)}.")
+
+    base_startx = int(bcenter_x - size_x)
+    base_starty = int(bcenter_y - size_y)
+    base_stopx = int(bcenter_x + size_x)
+    base_stopy = int(bcenter_y + size_y)
+
+    match_size = base_cube.raster_size
+
+    # for now, require the entire window resides inside both cubes.
+    if base_stopx > match_size[0]:
+        raise Exception(f"Window: {base_stopx} > {match_size[0]}, center: {bcenter_x},{bcenter_y}")
+    if base_startx < 0:
+        raise Exception(f"Window: {base_startx} < 0, center: {bcenter_x},{bcenter_y}")
+    if base_stopy > match_size[1]:
+        raise Exception(f"Window: {base_stopy} > {match_size[1]}, center: {bcenter_x},{bcenter_y} ")
+    if base_starty < 0:
+        raise Exception(f"Window: {base_starty} < 0, center: {bcenter_x},{bcenter_y}")
+
+    base_corners = [(base_startx,base_starty),
+                    (base_startx,base_stopy),
+                    (base_stopx,base_stopy),
+                    (base_stopx,base_starty),
+                    (bcenter_x, bcenter_y)]
+    
+    dst_corners = []
+    passing_base_corners = []
+    for x,y in base_corners:
+        try:
+            print('Processing: ', x,y)
+            lon, lat = spatial.isis.image_to_ground(base_cube.file_name, x, y)
+            dst_corners.append(
+                spatial.isis.ground_to_image(input_cube.file_name, lon, lat)
+            )
+            passing_base_corners.append((x, y))
+        except Exception as e: 
+            print(e)
+
+    if len(dst_corners) < 3:
+        raise ValueError(f'Unable to find enough points to compute an affine transformation. Found {len(dst_corners)} points, but need at least 3.')
+
+    base_gcps = np.array([*passing_base_corners])
+
+    dst_gcps = np.array([*dst_corners])
+
+    affine = tf.estimate_transform('affine', np.array([*base_gcps]), np.array([*dst_gcps]))
+    t2 = time.time()
+    print(f'Estimation of the transformation took {t2-t1} seconds.')
+    return affine
+
+def affine_warp_image(base_cube, input_cube, affine, order=3):
+    """
+    Given a base image, an input image, and an affine transformation, return
+    the base image and the affine transformed input image.
+    
+    Parameters
+    ----------
+    base_cube : GeoDataset
+                The base dataset that the affine transformation transforms to
+
+    input_cube : GeoDataset
+                 The cube to be transformed using the affine transformation
+
+    affine : object
+             A scikit image Affine object
+
+    order : int
+            The order of the transformation to apply. Default is a 3rd (3) order 
+            polynomial.
+
+    Returns
+    -------
+    base_arr : np.array()
+              Original base image array
+
+    dst_arr : np.array()
+              The destination array transformed into base image's space
+    """
+    t1 = time.time()
+    # read_array not getting correct type by default
+
+    base_type = isis.isis2np_types[pvl.load(base_cube.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
+    base_arr = base_cube.read_array(dtype=base_type)
+
+    dst_type = isis.isis2np_types[pvl.load(input_cube.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
+    dst_arr = input_cube.read_array(dtype=dst_type)
+
+    box = (0, 0, max(dst_arr.shape[1], base_arr.shape[1]), max(dst_arr.shape[0], base_arr.shape[0]))
+    dst_arr = np.array(Image.fromarray(dst_arr).crop(box))
+
+    dst_arr = tf.warp(dst_arr, affine, order=order)      
+    t2 = time.time()
+    print(f'Affine warp took {t2-t1} seconds.')
+
+    return base_arr, dst_arr
+
+def subpixel_register_point_smart(pointid,
+                            cost_func=lambda x,y: 1/x**2 * y,
+                            ncg=None,
+                            geom_func='simple',
+                            match_func='classic',
+                            parameters=[],
+                            chooser='subpixel_register_point_smart'):
+
+    """
+    Given some point, subpixel register all of the measures in the point to the
+    reference measure.
+
+    Parameters
+    ----------
+    pointid : int or obj
+              The identifier of the point in the DB or a Points object
+
+    cost_func : func
+                A generic cost function accepting two arguments (x,y), where x is the
+                distance that a point has shifted from the original, sensor identified
+                intersection, and y is the correlation coefficient coming out of the
+                template matcher.
+
+    ncg : obj
+          the network candidate graph that the point is associated with; used for
+          the DB session that is able to access the point.
+    
+    geom_func : callable
+                function used to tranform the source and/or destination image before 
+                running a matcher. 
+    
+    match_func : callable
+                 subpixel matching function to use registering measures   
+
+    parameters : list 
+                 of dicts containing "match_kwargs" used for specified match_func. 
+                 The passed parameters describe image and template chips that are tested.
+                 For example parameters = [
+                 {'match_kwargs': {'image_size':(121,121), 'template_size':(61,61)}},
+                 {'match_kwargs': {'image_size':(151,151), 'template_size':(67,67)}},
+                 {'match_kwargs': {'image_size':(181,181), 'template_size':(73,73)}}]
+    """
+    
+    geom_func=geom_func.lower()
+    match_func=match_func.lower()
+
+    print(f"Using {geom_func} with the {match_func} matcher.")
+    
+    match_func = check_match_func(match_func)
+    geom_func = check_geom_func(geom_func)
+
+    if not ncg.Session:
+        raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
+    
+    if isinstance(pointid, Points):
+        pointid = pointid.id
+    
+    t1 = time.time()
+    with ncg.session_scope() as session:
+        measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
+        point = session.query(Points).filter(Points.id == pointid).one()
+        reference_index = point.reference_index
+        t2 = time.time()
+        print(f'Query took {t2-t1} seconds to find the measures and reference measure.')
+        # Get the reference measure. Previously this was index 0, but now it is a database tracked attribute
+        source = measures[reference_index]
+
+        print(f'Using measure {source.id} on image {source.imageid}/{source.serial} as the reference.')
+        print(f'Measure reference index is: {reference_index}')
+        source.template_metric = 1
+        source.template_shift = 0
+        source.phase_error = 0
+        source.phase_diff = 0
+        source.phase_shift = 0
+
+        sourceid = source.imageid
+        sourceres = session.query(Images).filter(Images.id == sourceid).one()
+        source_node = NetworkNode(node_id=sourceid, image_path=sourceres.path)
+        source_node.parent = ncg
+        t3 = time.time()
+        print(f'Query for the image to use as source took {t3-t2} seconds.')
+        print(f'Attempting to subpixel register {len(measures)-1} measures for point {pointid}')
+        nodes = {}
+        for measure in measures:
+            res = session.query(Images).filter(Images.id == measure.imageid).one()
+            nodes[measure.imageid] = NetworkNode(node_id=measure.imageid, image_path=res.path)
+
+        session.expunge_all()
+    
+    print(f'Source: sample: {source.sample} | line: {source.line}')
+    resultlog = []
+    updated_measures = []
+    for i, measure in enumerate(measures):
+        
+        if i == reference_index:
+            continue
+
+        print()
+        print(f'Measure: {measure}')
+        currentlog = {'measureid':measure.id,
+                    'status':''}
+        cost = None
+
+        destination_node = nodes[measure.imageid]
+
+        print('geom_match image:', destination_node['image_path'])
+        print('geom_func', geom_func)
+        
+        # Apply the transformation
+        try:
+            affine = estimate_affine_transformation(source_node.geodata, 
+                                                        destination_node.geodata,
+                                                        source.apriorisample, 
+                                                        source.aprioriline)
+        except Exception as e:
+            print(e) 
+            m = {'id': measure.id,
+                 'sample':measure.apriorisample,
+                 'line':measure.aprioriline,
+                 'status':False,
+                 'choosername':chooser}
+            updated_measures.append([None, None, m])
+            continue
+        
+        base_arr, dst_arr = affine_warp_image(source_node.geodata, 
+                                              destination_node.geodata, 
+                                              affine)
+            
+        # Compute the baseline metrics using the smallest window
+        size_x = np.inf
+        size_y = np.inf
+        for p in parameters:
+            match_kwarg = p['match_kwargs']
+            if match_kwarg['template_size'][0] < size_x:
+                size_x = match_kwarg['template_size'][0]
+            if match_kwarg['template_size'][1] < size_y:
+                size_y = match_kwarg['template_size'][1]
+        
+        base_roi = roi.Roi(base_arr, source.apriorisample, source.aprioriline, size_x=size_x, size_y=size_y).clip()
+        dst_roi = roi.Roi(dst_arr, source.apriorisample, source.aprioriline, size_x=size_x, size_y=size_y).clip()
+
+        if np.isnan(base_roi).any() or np.isnan(dst_roi).any():
+            print('Unable to process due to NaN values in the input data.')
+            m = {'id': measure.id,
+                    'status': False,
+                    'choosername': chooser}
+            updated_measures.append([None, None, m])
+            continue
+        
+        if base_roi.shape != dst_roi.shape:
+            print('Unable to process. ROIs are different sizes for MI matcher')
+            m = {'id': measure.id,
+                 'status': False,
+                 'choosername': chooser}
+            updated_measures.append([None, None, m])
+            continue
+
+        baseline_mi = mutual_information(base_roi, dst_roi)
+        
+        # Refactor this call to module
+        result = cv2.matchTemplate(base_roi, dst_roi, method=cv2.TM_CCOEFF_NORMED)
+        baseline_corr = result[0][0]
+        print(f'Baseline MI: {baseline_mi} | Baseline Corr: {baseline_corr}')
+        for parameter in parameters:
+            match_kwargs = parameter['match_kwargs']
+
+            restemplate = match_func(source.apriorisample, source.aprioriline, source.apriorisample, source.aprioriline, base_arr, dst_arr, **match_kwargs)
+ 
+            try: 
+                x,y,maxcorr,temp_corrmap = restemplate
+            except: 
+                # did not return a corrmap 
+                x,y,maxcorr = restemplate 
+                temp_corrmap = np.empty((size_x, size_y))
+                temp_corrmap[:] = np.nan
+            
+            if x is None or y is None:
+                print('Unable to match with this parameter set.')
+                continue
+               
+            base_roi = roi.Roi(base_arr, source.apriorisample, source.aprioriline, size_x=size_x, size_y=size_y).clip()
+            dst_roi = roi.Roi(dst_arr, x, y, size_x=size_x, size_y=size_y).clip()
+
+            mi_metric = mutual_information(base_roi, dst_roi)
+
+            if mi_metric is None:
+                print('MI Metric Failure. Returning.')
+                m = {'id': measure.id,
+                     'status': False}
+            else:
+                metric = maxcorr
+                new_x, new_y = affine([x, y])[0]
+                dist = np.linalg.norm([source.apriorisample-x, source.aprioriline-y])
+                cost = cost_func(dist, metric)
+    
+                m = {'id': measure.id,
+                    'sample':new_x,
+                    'line':new_y,
+                    'weight':cost,
+                    'choosername':chooser,
+                    'template_metric':metric,
+                    'template_shift':dist, 
+                    'mi_metric': mi_metric, 
+                    'status': True}
+                print(f'METRIC: {metric}| SAMPLE: {new_x} | LINE: {new_y} | MI: {mi_metric}')
+
+            updated_measures.append([baseline_mi, baseline_corr, m])
+
+    # Baseline MI, Baseline Correlation, updated measures to select from
+    return updated_measures
+
+from scipy.spatial import distance_matrix
+import numpy as np
+
+def check_for_shift_consensus(shifts, tol=0.1):
+    """
+    Find matched locations from a set of multiple different solutions that have 
+    the same position within some user supplied tolerance. If the distance between
+    two measures (shifts) is <= the tolerance, the measures are considered to have
+    found consensus.
+
+    This doc string uses 'measure' to describe each solution found by a subpixel
+    matching attempt. If n-attempts are made, using n-different parameter sets,
+    this function will find shift consensus between those n-different solutions.
+    
+    The function works by computing the full distance matrix between all solutions, 
+    generating a boolean mask for distances less than the tolerance, then generating 
+    a vector of column sums where the sum is the number of inliers, and finally, 
+    returning a boolean vector where the column sums are greater than 2.
+
+    Parameters
+    ----------
+    shifts : ndarray
+             (n,2) array of (x,y) coordinates representing the subpixel registered
+             measure locations. n must be >= 3.
+
+    tol : float
+          The tolerance value required for measures to be inliers. Distances between
+          points less than or equal to the tolerance are inliers. In pixel space.
+
+    Returns
+     : ndarray
+       (n,1) boolean array where the nth element corresponds to the nth measure
+       in the shifts input array. True values indicate that the measure has shift
+       consensus with at least 2 other measures
+    """
+    dists = distance_matrix(shifts, shifts)
+    inliers = dists <= tol
+    col_sums = np.sum(inliers, 1)
+    # The distance matrix is zero diagonal, so 2+ means one other matcher found 
+    # a close location
+    return col_sums > 2
+    
+def decider(measures, tol=0.5):  
+    """
+    The logical decision function that determines which measures would be updated 
+    with subpixel registration or ignored. The function iterates over the measures, 
+    looks for shift consensus between subpixel registration runs.
+
+    Parameters
+    ----------
+    measures : list
+               A list of candidate measures (dicts) objects from the smart subpixel matcher
+
+    tol : float
+          The tolerance value required for points to be inliers. Distances between
+          points less than or equal to the tolerance are inliers. In pixel space.
+
+    Returns
+    -------
+    measures_to_update : list
+                         of measures (dicts) to be updated to subpixel accuracy
+
+    measures_to_set_false : list
+                            of meaure ids to be ignored beause theu fail the consensus
+                            building approach
+    """    
+    by_id = defaultdict(list)
+    measures_to_set_false = []
+    for m in measures:
+        baseline_mi = m[0]
+        baseline_corr = m[1]
+        m = m[2]
+        if m['status'] and m['mi_metric'] is not None and m['template_metric'] is not None:
+            choosername = m['choosername']
+            by_id[m['id']].append([m['line'], 
+                                  m['sample'], 
+                                  m['mi_metric'], 
+                                  m['template_metric'], 
+                                  baseline_mi, 
+                                  baseline_corr, 
+                                  m['template_shift']])
+        else:
+            measures_to_set_false.append(m['id'])
+            
+    measures_to_update = []
+    for k, v in by_id.items():
+        v = np.asarray(v)
+        mi = v[:,2]
+        corr = v[:,3]
+        baseline_mi = v[:,4]
+        baseline_corr = v[:,5]
+        cost = (baseline_mi - mi) + (baseline_corr - corr)
+        
+        # At least two of the correlators need to have found a soln within 0.5 pixels.
+        shift_mask = check_for_shift_consensus(v[:,:2], tol=tol)
+        
+        # This is formulated as a minimization, so the best is the min cost
+        best_cost = np.argmin(cost)
+        
+        if shift_mask[best_cost] == False:
+            # The best cost does not have positional consensus
+            measures_to_set_false.append(k)
+        else:
+            best_measure = v[best_cost]
+            m = {'id':k,
+                 'line': best_measure[0],
+                 'sample': best_measure[1],
+                 'weight': cost[best_cost],
+                 'template_metric': best_measure[3],
+                 'template_shift': best_measure[6],
+                 'choosername': choosername,
+                 'ignore':False,
+                 'best_parameter_index': best_cost}
+            measures_to_update.append(m)
+    # A measure could have one bad regitration and get set false, if a different parameter set passed,
+    # remove from the set false list.
+    ids_to_update = [d['id'] for d in measures_to_update]
+    measures_to_set_false = [i for i in measures_to_set_false if i not in ids_to_update] 
+    
+    return measures_to_update, measures_to_set_false
+
+def validate_candidate_measure(measure_to_register,
+                            ncg=None,
+                            geom_func='simple',
+                            match_func='classic',
+                            parameters=[],
+                            **kwargs):
+    """
+    Compute the matching distances, matching the reference measure to the measure
+    originally registered to it. This is an inverse check from the original mathcing. 
+    In other words, the first registration registers A->B to find measure_to_register (B-naught).
+    This func then matches B->A (B-prime) and computes the distance between B-naught and B-prime.
+
+    Parameters
+    ----------
+    measure_to_register : dict
+                          The measure to register
+
+    ncg : obj
+          A network candidate graph object
+
+    geom_func : str
+                The func to use to perform geometric matching
+
+    match_func : str
+                 The function to use to perform matching
+
+    parameters : list
+                 A list of matching parametrizations to test. Each entry results in
+                 a subpixel registration attempt and then set of these results is
+                 used ot ientify inliner and outlier parameter sets.
+
+    Returns
+    -------
+    dists : list
+            Of reprojection distances for each parameter set.
+    """
+    geom_func=geom_func.lower()
+    match_func=match_func.lower()
+
+    print(f"Using {geom_func} with the {match_func} matcher.")
+    
+    match_func = check_match_func(match_func)
+    geom_func = check_geom_func(geom_func)
+
+    if not ncg.Session:
+        raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
+    
+    measure_to_register_id = measure_to_register['id']
+    
+    t1 = time.time()
+    with ncg.session_scope() as session:
+        # Get the measure to be registered
+        measure = session.query(Measures).filter(Measures.id == measure_to_register_id).order_by(Measures.id).one()
+        # Get the references measure
+        point = measure.point
+        reference_index = point.reference_index
+        reference_measure = point.measures[reference_index]
+
+        t2 = time.time()
+        print(f'Query took {t2-t1} seconds to find the measure and the reference measure.')
+
+        # Match the reference measure to the measure_to_register - this is the inverse of the first match attempt
+        # Source is the image that we are seeking to validate, destination is the reference measure. 
+        # This is the inverse of other functions as this is a validator.
+                
+        source_imageid = measure.imageid
+        source_image = session.query(Images).filter(Images.id == source_imageid).one()
+        source_node = NetworkNode(node_id=source_imageid, image_path=source_image.path)
+        source_node.parent = ncg
+        
+        destination_imageid = reference_measure.imageid
+        destination_image = session.query(Images).filter(Images.id == destination_imageid).one()
+        destination_node = NetworkNode(node_id=destination_imageid, image_path=destination_image.path)
+        destination_node.parent = ncg
+        
+        sample = measure_to_register['sample']
+        line = measure_to_register['line']
+        
+        print(f'Validating measure: {measure_to_register_id} on image: {source_image.name}')
+        try:
+            affine = estimate_affine_transformation(source_node.geodata, destination_node.geodata, sample, line)
+        except:
+            print('Unable to transform image to reference space. Likely too close to the edge of the non-reference image. Setting ignore=True')
+            return [np.inf] * len(parameters)
+        base_arr, dst_arr = affine_warp_image(source_node.geodata, 
+                                                  destination_node.geodata, 
+                                                  affine)
+
+        dists = []
+        for parameter in parameters:
+            match_kwargs = parameter['match_kwargs']
+
+            restemplate = match_func(sample, line, sample, line, base_arr, dst_arr, **match_kwargs)
+ 
+            try: 
+                x,y,maxcorr,temp_corrmap = restemplate
+            except: 
+                # did not return a corrmap 
+                x,y,maxcorr = restemplate 
+                temp_corrmap = np.empty((size_x, size_y))
+                temp_corrmap[:] = np.nan
+            
+            if x is None or y is None:
+                continue
+        
+        
+            new_x, new_y = affine([x, y])[0]
+
+            dist = np.sqrt((new_y - reference_measure.line) ** 2 + (new_x - reference_measure.sample) ** 2) 
+            print('Reprojection Distance: ', dist)
+            dists.append(dist)
+        return dists
+
+def smart_register_point(pointid, parameters=[], shared_kwargs={}, ncg=None, Session=None):    
+    """
+    The entry func for the smart subpixel registration code. This is the user 
+    side API func for subpixel registering a point using the smart matcher.
+
+    This function runs multiple rounds of subpixel registration on a point 
+    using 'subpixel_register_point_smart', checks for a consensus from the 
+    subpixel registration results, and validates the new location by inverting 
+    the matching direction. This function writes to the database and outputs 
+    the updated and ignored measures for logging purposes.
+
+    This func writes to the databse. The returns are for logging and 
+    debugging convenience.
+
+    Parameters
+    ----------
+    pointid : int
+              The id of the point to register
+
+    parameters : list
+                 A list of dict subpixel registration kwargs, {template_size: (x,x), image_size: (y,y)}
+
+    shared_kwargs : dict
+                    of kwargs passed to the subpixel matcher that are shared between all of the parameter sets
+
+    ncg : obj
+          A network candidate graph object
+
+    Session : obj
+              An optional sqlalchemy Session factory
+
+    Returns
+    -------
+    measures_to_update : list
+                         of measures (dicts) to be updated to subpixel accuracy
+
+    measures_to_set_false : list
+                            of meaure ids to be ignored beause theu fail the consensus
+                            building approach
+    
+    """
+    measure_results = subpixel_register_point_smart(pointid, ncg=ncg, parameters=parameters, **shared_kwargs)
+    measures_to_update, measures_to_set_false = decider(measure_results)
+
+    print()
+    print(f'Found {len(measures_to_update)} measures that found subpixel registration consensus. Running validation now...')
+    # Validate that the new position has consensus
+    for measure in measures_to_update:
+        print()
+        reprojection_distances = validate_candidate_measure(measure, parameters=parameters, ncg=ncg, **shared_kwargs)
+        if np.sum(np.array(reprojection_distances) < 1) < 2:
+        #if reprojection_distance > 1:
+            print(f"Measure {measure['id']} failed validation. Setting ignore=True for this measure.")
+            measures_to_set_false.append(measure['id'])
+    
+    for measure in measures_to_update:
+        measure['_id'] = measure.pop('id', None)
+
+    from autocnet.io.db.model import Measures
+    from sqlalchemy.sql.expression import bindparam
+    
+    # Update the measures that passed registration
+    with ncg.engine.connect() as conn:
+        if measures_to_update:
+            stmt = Measures.__table__.update().\
+                                    where(Measures.__table__.c.id == bindparam('_id')).\
+                                    values({'weight':bindparam('weight'),
+                                            'measureIgnore':bindparam('ignore'),
+                                            'templateMetric':bindparam('template_metric'),
+                                            'templateShift':bindparam('template_shift'),
+                                            'line': bindparam('line'),
+                                            'sample':bindparam('sample'),
+                                            'ChooserName':bindparam('choosername')})
+            resp = conn.execute(
+                stmt, measures_to_update
+            )
+        if measures_to_set_false:
+            measures_to_set_false = [{'_id':i} for i in measures_to_set_false]
+            # Set ignore=True measures that failed
+            stmt = Measures.__table__.update().\
+                                    where(Measures.__table__.c.id == bindparam('_id')).\
+                                    values({'measureIgnore':True,
+                                            'ChooserName':shared_kwargs['chooser']})
+            resp = conn.execute(
+                stmt, measures_to_set_false
+            )
+    return measures_to_update, measures_to_set_false

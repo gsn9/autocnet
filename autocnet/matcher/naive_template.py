@@ -75,8 +75,6 @@ def pattern_match_autoreg(template, image, subpixel_size=3, metric=cv2.TM_CCOEFF
     y += (template.shape[0] / 2)
     x += (template.shape[1] / 2)
     
-    print('Results after shifting from the UL corner to the center of the template: ', y, x)
-    
     x -= ideal_x
     y -= ideal_y
     
@@ -112,8 +110,6 @@ def pattern_match(template, image, upsampling=16, metric=cv2.TM_CCOEFF_NORMED, e
     strength : float
                The strength of the correlation in the range [-1, 1].
     """
-    print('template avg: ', template.mean())
-    print('image avg: ', image.mean())
     if upsampling < 1:
         raise ValueError
 
