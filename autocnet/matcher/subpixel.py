@@ -16,6 +16,7 @@ import cv2
 from skimage import transform as tf
 from skimage import registration 
 from skimage import filters
+from skimage.util import img_as_float32
 from scipy import fftpack
 
 from matplotlib import pyplot as plt
@@ -523,7 +524,7 @@ def subpixel_template_classic(sx, sy, dx, dy,
     if (s_image is None) or (d_template is None):
         return None, None, None, None
 
-    shift_x, shift_y, metrics, corrmap = func(d_template.astype('float32'), s_image.astype('float32'), **kwargs)
+    shift_x, shift_y, metrics, corrmap = func(img_as_float32(d_template), img_as_float32(s_image), **kwargs)
     if shift_x is None:
         return None, None, None, None
     # Apply the shift and return
@@ -1521,7 +1522,6 @@ def subpixel_register_point(pointid,
         for measure in measures:
             res = session.query(Images).filter(Images.id == measure.imageid).one()
             nodes[measure.imageid] = NetworkNode(node_id=measure.imageid, image_path=res.path)
-
         session.expunge_all()
 
     resultlog = []
@@ -2172,41 +2172,46 @@ def subpixel_register_point_smart(pointid,
     
     t1 = time.time()
     with ncg.session_scope() as session:
+        # Order by is important here because the measures get ids in sequential order when initially placed
+        # and the reference_index is positionally linked to the ordered vector of measures.
         measures = session.query(Measures).filter(Measures.pointid == pointid).order_by(Measures.id).all()
         point = session.query(Points).filter(Points.id == pointid).one()
         reference_index = point.reference_index
         t2 = time.time()
         print(f'Query took {t2-t1} seconds to find the measures and reference measure.')
-        # Get the reference measure. Previously this was index 0, but now it is a database tracked attribute
+        
+        # Get the reference measure to instantiate the source node. All other measures will
+        # match to the source node.
         source = measures[reference_index]
+        reference_index_id = source.imageid
 
         print(f'Using measure {source.id} on image {source.imageid}/{source.serial} as the reference.')
         print(f'Measure reference index is: {reference_index}')
-        source.template_metric = 1
-        source.template_shift = 0
-        source.phase_error = 0
-        source.phase_diff = 0
-        source.phase_shift = 0
-
-        sourceid = source.imageid
-        sourceres = session.query(Images).filter(Images.id == sourceid).one()
-        source_node = NetworkNode(node_id=sourceid, image_path=sourceres.path)
-        source_node.parent = ncg
-        t3 = time.time()
-        print(f'Query for the image to use as source took {t3-t2} seconds.')
-        print(f'Attempting to subpixel register {len(measures)-1} measures for point {pointid}')
+        
+        # Build a node cache so that this is an encapsulated database call. Then nodes
+        # can be pulled from the lookup sans database.
         nodes = {}
         for measure in measures:
             res = session.query(Images).filter(Images.id == measure.imageid).one()
-            nodes[measure.imageid] = NetworkNode(node_id=measure.imageid, image_path=res.path)
+            nn = NetworkNode(node_id=measure.imageid, image_path=res.path)
+            nn.parent = ncg
+            nodes[measure.imageid] = nn
 
         session.expunge_all()
+
+    t3 = time.time()
+    print(f'Query for the image to use as source took {t3-t2} seconds.')
+    print(f'Attempting to subpixel register {len(measures)-1} measures for point {pointid}')
+    print(nodes)
+    # Set the reference image
+    source_node = nodes[reference_index_id]
     
     print(f'Source: sample: {source.sample} | line: {source.line}')
     resultlog = []
     updated_measures = []
     for i, measure in enumerate(measures):
         
+        # If this is the reference node, do not attempt to match it.
         if i == reference_index:
             continue
 
@@ -2270,8 +2275,12 @@ def subpixel_register_point_smart(pointid,
             updated_measures.append([None, None, m])
             continue
 
+        base_roi = img_as_float32(base_roi)
+        dst_roi = img_as_float32(dst_roi)
+
         baseline_mi = mutual_information(base_roi, dst_roi)
         
+
         # Refactor this call to module
         result = cv2.matchTemplate(base_roi, dst_roi, method=cv2.TM_CCOEFF_NORMED)
         baseline_corr = result[0][0]
@@ -2295,6 +2304,10 @@ def subpixel_register_point_smart(pointid,
                
             base_roi = roi.Roi(base_arr, source.apriorisample, source.aprioriline, size_x=size_x, size_y=size_y).clip()
             dst_roi = roi.Roi(dst_arr, x, y, size_x=size_x, size_y=size_y).clip()
+
+            #TODO: When refactored, all this type conversion should happen in the ROI object.
+            base_roi = img_as_float32(base_roi)
+            dst_roi = img_as_float32(dst_roi)
 
             mi_metric = mutual_information(base_roi, dst_roi)
 

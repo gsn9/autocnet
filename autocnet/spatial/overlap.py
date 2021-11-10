@@ -74,7 +74,7 @@ def place_points_in_overlaps(size_threshold=0.0007,
     if not ncg.Session:
         raise BrokenPipeError('This func requires a database session from a NetworkCandidateGraph.')
 
-    for overlap in Overlay.overlapping_larger_than(size_threshold, Session):
+    for overlap in Overlay.overlapping_larger_than(size_threshold, ncg.Session):
         if overlap.intersections == None:
             continue
         place_points_in_overlap(overlap,
@@ -93,7 +93,7 @@ def place_points_in_overlap(overlap,
                             use_cache=False,
                             **kwargs):
     """
-    Place points into an overlap geometry by back-projecing using sensor models.
+    Place points into an overlap geometry by back-projecting using sensor models.
     The DEM specified in the config file will be used to calculate point elevations.
 
     Parameters
@@ -102,7 +102,7 @@ def place_points_in_overlap(overlap,
               An autocnet.io.db.model Overlay model instance.
 
     identifier: str
-                The tag used to distiguish points laid down by this function.
+                The tag used to distinguish points laid down by this function.
 
     cam_type : str
                options: {"csm", "isis"}
@@ -292,18 +292,27 @@ def place_points_in_overlap(overlap,
         # Compute ground point to back project into measurtes
         gnd = csmapi.EcefCoord(x, y, z)
 
-        for node in nodes:
+        for current_index, node in enumerate(nodes):
             if cam_type == "csm":
                 image_coord = node.camera.groundToImage(gnd)
                 sample, line = image_coord.samp, image_coord.line
             if cam_type == "isis":
+                # If this try/except fails, then the reference_index could be wrong because the length
+                # of the measures list is different than the length of the nodes list that was used
+                # to find the most interesting feature.
                 try:
                     sample, line = isis.ground_to_image(node["image_path"], updated_lon, updated_lat)
                 except CalledProcessError as e:
                     if 'Requested position does not project in camera model' in e.stderr:
                         print(f'interesting point ({updated_lon},{updated_lat}) does not project to image {node["image_path"]}')
-                        continue
-
+                    # If the current_index is greater than the reference_index, the change in list size does
+                    # not impact the positional index of the reference. If current_index is less than the
+                    # reference_index, then the reference_index needs to de-increment by one for each time
+                    # a measure fails to be placed.
+                    if current_index < reference_index:
+                        reference_index -= 1
+                    continue
+                    
             point.measures.append(Measures(sample=sample,
                                            line=line,
                                            apriorisample=sample,
