@@ -44,6 +44,7 @@ release.
 
 ### Fixed
 - `update_from_jigsaw` failures due to stale code. Now uses a conntext on the engine to ensure closure
+- Fixes errors where reference measure index was being incorrectly tracked when placing measures would fail [#606](https://github.com/USGS-Astrogeology/autocnet/issues/606)
 
 ## [0.6.0]
 
