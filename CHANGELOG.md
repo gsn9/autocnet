@@ -41,6 +41,7 @@ release.
 ### Changed
 - `geom_match_simple` defaults to a 3rd order warp for interpolation
 - Speed improvements for place_points_from_cnet dependent on COPY method instead of ORM update
+- License from custom to CC0. Fixes [#607](https://github.com/USGS-Astrogeology/autocnet/issues/607)
 
 ### Fixed
 - `update_from_jigsaw` failures due to stale code. Now uses a conntext on the engine to ensure closure
