@@ -46,6 +46,7 @@ release.
 ### Fixed
 - `update_from_jigsaw` failures due to stale code. Now uses a conntext on the engine to ensure closure
 - Fixes errors where reference measure index was being incorrectly tracked when placing measures would fail [#606](https://github.com/USGS-Astrogeology/autocnet/issues/606)
+-  Fixed #584 where importing autocnet fails on kalasiris imports by wrapping the import in a try accept.
 
 ## [0.6.0]
 

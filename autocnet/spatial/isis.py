@@ -15,10 +15,14 @@ from collections import abc
 from numbers import Number
 
 import numpy as np
-import kalasiris as isis
-import pvl
 
-import kalasiris as kal
+try:
+    import kalasiris as isis
+except Exception as exception:
+    from autocnet.utils.utils import FailedImport
+    isis = FailedImport(exception)
+
+import pvl
 
 isis2np_types = {
         "UnsignedByte" : "uint8",
@@ -48,7 +52,7 @@ def get_isis_special_pixels(arr):
 
     """
     isis_dtype = np2isis_types[str(arr.dtype)]
-    sp_pixels = getattr(kal.specialpixels, isis_dtype)
+    sp_pixels = getattr(isis.specialpixels, isis_dtype)
 
     null = np.argwhere(arr==sp_pixels.Null)
     lrs = np.argwhere(arr==sp_pixels.Lrs)

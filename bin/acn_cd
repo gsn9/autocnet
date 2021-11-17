@@ -25,7 +25,11 @@ import numpy as np
 
 from affine import Affine
 
-import kalasiris as isis
+try:
+    import kalasiris as isis
+except:
+    from autocnet.utils.utils import FailedImport
+    isis = FailedImport()
 
 import warnings
 warnings.simplefilter("ignore")
