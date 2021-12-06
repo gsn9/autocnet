@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+import logging
 
 from autocnet.utils.serializers import JsonEncoder, object_hook
 from autocnet.graph import cluster_submit
@@ -12,6 +13,7 @@ from autocnet.graph.node import NetworkNode
 from autocnet.graph.edge import NetworkEdge
 from autocnet.io.db.model import Points, JobsHistory
 
+log = logging.getLogger(__name__)
 
 @pytest.fixture
 def args():
@@ -102,9 +104,11 @@ def test_finalize_message_from_work_queue(args, queue, simple_message):
     cluster_submit.finalize_message_from_work_queue(queue, args['working_queue'], remove_key)
     assert queue.llen(args['working_queue']) == 0
     
-def test_no_msg(args, queue):
-    with pytest.warns(UserWarning, match='Expected to process a cluster job, but the message queue is empty.'):
-        cluster_submit.manage_messages(args, queue)
+def test_no_msg(caplog,args, queue):
+    cluster_submit.manage_messages(args, queue)
+    expected_log = 'Expected to process a cluster job, but the message queue is empty.'
+    assert expected_log in caplog.text
+    
 
 
 # Classes and funcs for testing job submission.
@@ -167,6 +171,11 @@ def test_process_row(along, func, msg_additions, mocker):
     
     cluster_submit._instantiate_row.assert_called_once()
 
+@pytest.mark.parametrize()
+def _do_something():
+    log.debug("Doing something!")
+    log.info("This is some info")
+
 @pytest.mark.parametrize("along, func, msg_additions",[
                         ([1,2,3,4,5], _do_nothing, {})
                         ])
@@ -181,6 +190,7 @@ def test_process_generic(along, func, msg_additions, mocker):
     mocker.patch('autocnet.graph.cluster_submit._instantiate_obj', side_effect=_generate_obj)
     mocker.patch('autocnet.graph.network.NetworkCandidateGraph.Session', return_value=True)
     mocker.patch('autocnet.graph.network.NetworkCandidateGraph.config_from_dict')
+    _do_something()
     
     assert not cluster_submit._instantiate_row.called
     assert not cluster_submit._instantiate_obj.called

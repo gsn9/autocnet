@@ -5,7 +5,7 @@ import copy
 import os
 import json
 import sys
-import warnings
+import logging
 
 from io import StringIO 
 from contextlib import redirect_stdout
@@ -19,6 +19,9 @@ from autocnet.io.db.model import Points, Measures, Overlay
 from autocnet.utils.utils import import_func
 from autocnet.utils.serializers import JsonEncoder, object_hook
 from autocnet.io.db.model import JobsHistory
+
+# set up the logging file
+log = logging.getLogger(__name__)
 
 def parse_args():  # pragma: no cover
     parser = argparse.ArgumentParser()
@@ -178,7 +181,7 @@ def manage_messages(args, queue):
         
         if msg is None:
             if args['queue'] == False:
-                warnings.warn('Expected to process a cluster job, but the message queue is empty.')
+                log.warning('Expected to process a cluster job, but the message queue is empty.')
                 return
             elif args['queue'] == True:
                 print(f'Completed processing from queue: {queue}.')
@@ -197,8 +200,9 @@ def manage_messages(args, queue):
         with redirect_stdout(stdout):
             # Apply the algorithm
             response = process(msgdict)
-            # Should go to a logger someday!
-            print(response)
+            # Should go to a logger someday! (today is that day!)
+            log.info(response)
+            
 
         out = stdout.getvalue()
         # print to get everything on the logs in the directory
@@ -226,6 +230,9 @@ def manage_messages(args, queue):
 
 def main():  # pragma: no cover
     args = vars(parse_args())
+    # set up the logger
+    logging.basicConfig(level=os.environ.get("autocnet_loglevel", "INFO"))
+    log.error("hello")
     # Get the message
     queue = StrictRedis(host=args['host'], port=args['port'], db=0)
     manage_messages(args, queue)
