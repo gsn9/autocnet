@@ -1,7 +1,7 @@
 from collections import defaultdict, MutableMapping, Counter
 from functools import wraps, singledispatch
 import json
-import warnings
+import logging
 
 import numpy as np
 import pandas as pd
@@ -29,6 +29,9 @@ from autocnet.io.db.wrappers import DbDataFrame
 from plio.io.io_gdal import GeoDataset
 from csmapi import csmapi
 
+# set up the logging file
+log = logging.getLogger(__name__)
+
 class Edge(dict, MutableMapping):
     """
     Attributes
@@ -54,6 +57,7 @@ class Edge(dict, MutableMapping):
         self['fundamental_matrix'] = None
         self.subpixel_matches = pd.DataFrame()
         self._matches = pd.DataFrame()
+        self._caplog = log
 
         self['source_mbr'] = None
         self['destin_mbr'] = None
@@ -176,7 +180,7 @@ class Edge(dict, MutableMapping):
         tar_desc = self.destination.descriptors
 
         if not 'xm' in ref_kps.columns:
-            warnings.warn('To ring match body centered coordinates (xm, ym, zm) must be in the keypoints')
+            log.warning('To ring match body centered coordinates (xm, ym, zm) must be in the keypoints')
             return
         ref_feats = ref_kps[['x', 'y', 'xm', 'ym', 'zm']].values
         tar_feats = tar_kps[['x', 'y', 'xm', 'ym', 'zm']].values
@@ -234,7 +238,7 @@ class Edge(dict, MutableMapping):
         node = getattr(self, on)
         camera = getattr(node, 'camera')
         if camera is None:
-            warnings.warn('Unable to project matches without a sensor model.')
+            log.warning('Unable to project matches without a sensor model.')
             return
 
         matches = self.matches
@@ -274,7 +278,7 @@ class Edge(dict, MutableMapping):
     def overlap_check(self):
         """Creates a mask for matches on the overlap"""
         if not (self["source_mbr"] and self["destin_mbr"]):
-            warnings.warn(
+            log.warning(
                 "Cannot use overlap constraint, minimum bounding rectangles"
                 " have not been computed for one or more Nodes")
             return
@@ -378,7 +382,7 @@ class Edge(dict, MutableMapping):
                 of reprojective error indexed to the matches data frame
         """
         if self.fundamental_matrix is None:
-            warnings.warn('No fundamental matrix has been compute for this edge.')
+            log.error('No fundamental matrix has been compute for this edge.')
 
         matches, mask = self.clean(clean_keys)
         s_keypoints, d_keypoints = self.get_match_coordinates(clean_keys=clean_keys)
@@ -699,7 +703,7 @@ class Edge(dict, MutableMapping):
             except:
                 smbr = self.source.geodata.xy_extent
                 dmbr = self.source.geodata.xy_extent
-                warnings.warn("Overlap between {} and {} could not be "
+                log.warning("Overlap between {} and {} could not be "
                                 "computed.  Using the full image extents".format(self.source['image_name'],
                                                       self.destination['image_name']))
                 smbr = [smbr[0][0], smbr[1][0], smbr[0][1], smbr[1][1]]

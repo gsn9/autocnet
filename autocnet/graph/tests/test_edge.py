@@ -16,6 +16,8 @@ from autocnet.utils.utils import array_to_poly
 from .. import edge
 from .. import node
 
+import logging
+log = logging.getLogger(__name__)
 
 class TestEdge(unittest.TestCase):
 
@@ -326,9 +328,9 @@ class TestEdge(unittest.TestCase):
 
         # Should fail if no src & dst mbrs on edge; Warns user & mask isn't
         # populated
-        with pytest.warns(UserWarning):
+        with self.assertLogs() as captured:
             e.overlap_check()
-        self.assertTrue("overlap" not in e.masks)
+        self.assertTrue("Overlap between" not in captured.records[0].getMessage()) # and it is the proper one
 
         # Should work after MBRs are set
         e["source_mbr"] = (1, 1, 1, 1)
