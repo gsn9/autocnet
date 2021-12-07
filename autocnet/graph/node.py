@@ -1,7 +1,7 @@
 from collections import defaultdict, MutableMapping
 import itertools
 import os
-import warnings
+import logging
 
 from csmapi import csmapi
 import numpy as np
@@ -22,6 +22,8 @@ from autocnet.io import keypoints as io_keypoints
 from autocnet.vis.graph_view import plot_node
 from autocnet.utils import utils
 
+# set up the logging file
+log = logging.getLogger(__name__)
 
 class Node(dict, MutableMapping):
     """
@@ -395,7 +397,7 @@ class Node(dict, MutableMapping):
     def project_keypoints(self):
         if self.camera is None:
             # Without a camera, it is not possible to project
-            warnings.warn('Unable to project points, no camera available.')
+            log.warning('Unable to project points, no camera available.')
             return False
         # Project the sift keypoints to the ground
         def func(row, args):
@@ -444,7 +446,7 @@ class Node(dict, MutableMapping):
                    PATH to the directory for output and base file name
         """
         if self.keypoints.empty:
-            warnings.warn('Node {} has not had features extracted.'.format(self['node_id']))
+            log.warning('Node {} has not had features extracted.'.format(self['node_id']))
             return
 
         io_keypoints.to_npy(self.keypoints, self.descriptors,
@@ -524,7 +526,7 @@ class NetworkNode(Node):
         try:
             fp, cam_type = self.footprint
         except Exception as e:
-            warnings.warn('Unable to generate image footprint.\n{}'.format(e))
+           log.warning('Unable to generate image footprint.\n{}'.format(e))
             fp = cam_type = None
         # Create the image
         i = Images(name=self['image_name'],
@@ -638,7 +640,7 @@ class NetworkNode(Node):
             with open(isdpath, 'w') as f:
                 json.dump(response, f)
         except Exception as e:
-            warnings.warn('Failed to write JSON ISD for image {}.\n{}'.format(self['image_path'], e))
+           log.warning('Failed to write JSON ISD for image {}.\n{}'.format(self['image_path'], e))
         isd = csmapi.Isd(self['image_path'])
         plugin = csmapi.Plugin.findPlugin('UsgsAstroPluginCSM')
         self._camera = plugin.constructModelFromISD(isd, model_name)
