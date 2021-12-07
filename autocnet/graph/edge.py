@@ -57,7 +57,6 @@ class Edge(dict, MutableMapping):
         self['fundamental_matrix'] = None
         self.subpixel_matches = pd.DataFrame()
         self._matches = pd.DataFrame()
-        self._caplog = log
 
         self['source_mbr'] = None
         self['destin_mbr'] = None
