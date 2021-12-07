@@ -1,5 +1,5 @@
 import time
-import warnings
+import logging
 import json
 from subprocess import CalledProcessError
 
@@ -41,6 +41,9 @@ INSERT INTO overlay(intersections, geom) SELECT row.intersections, row.geom FROM
 (SELECT iid.geom, array_agg(iid.id) AS intersections
   FROM iid GROUP BY iid.geom) AS row WHERE array_length(intersections, 1) > 1;
 """
+
+# set up the logger file
+log = logging.getLogger(__name__)
 
 def place_points_in_overlaps(size_threshold=0.0007,
                              distribute_points_kwargs={},
@@ -164,7 +167,7 @@ def place_points_in_overlap(overlap,
     geom = overlap.geom
     valid = compgeom.distribute_points_in_geom(geom, **distribute_points_kwargs, **kwargs)
     if not valid.any():
-        warnings.warn('Failed to distribute points in overlap')
+        log.warning('Failed to distribute points in overlap')
         return []
 
     print(f'Have {len(valid)} potential points to place.')
@@ -211,7 +214,7 @@ def place_points_in_overlap(overlap,
             # Extract ORB features in a sub-image around the desired point
             image_roi = roi.Roi(node.geodata, sample, line, size_x=size, size_y=size)
             if image_roi.variance == 0:
-                warnings.warn(f'Failed to find interesting features in image {node.image_name}.')
+                log.warning(f'Failed to find interesting features in image {node.image_name}.')
                 continue
             image = image_roi.clip()
 
@@ -222,7 +225,7 @@ def place_points_in_overlap(overlap,
                 break
 
         if interesting is None:
-            warnings.warn('Unable to find an interesting point, falling back to the a priori pointing')
+            log.warning('Unable to find an interesting point, falling back to the a priori pointing')
             newsample = sample
             newline = line
         else:
