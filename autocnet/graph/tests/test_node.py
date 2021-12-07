@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import Mock, MagicMock, patch, PropertyMock
 import warnings
 
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -18,6 +19,8 @@ from autocnet.graph.node import Node
 
 sys.path.insert(0, os.path.abspath('..'))
 
+import logging
+log = logging.getLogger(__name__)
 
 class TestNode(object):
 
@@ -127,11 +130,11 @@ class TestNode(object):
         serial = node.isis_serial
         assert None == serial
 
-    def test_save_load(self, node, tmpdir):
+    def test_save_load(self, node, tmpdir,caplog):
         # Test that without keypoints this warns
-        with pytest.warns(UserWarning) as warn:
-            node.save_features(tmpdir.join('noattr.npy'))
-        assert len(warn) == 1
+        node.save_features(tmpdir.join('noattr.npy'))
+        expected = 'Node {} has not had features extracted.'.format(node['node_id'])
+        assert expected in caplog.text
 
         basename = tmpdir.dirname
 

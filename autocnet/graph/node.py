@@ -526,7 +526,7 @@ class NetworkNode(Node):
         try:
             fp, cam_type = self.footprint
         except Exception as e:
-           log.warning('Unable to generate image footprint.\n{}'.format(e))
+            log.warning('Unable to generate image footprint.\n{}'.format(e))
             fp = cam_type = None
         # Create the image
         i = Images(name=self['image_name'],
