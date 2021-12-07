@@ -1,10 +1,13 @@
-import warnings
+import logging
 import numpy as np
 import pandas as pd
 from scipy import optimize
 from autocnet.camera import camera
 from autocnet.camera import utils as camera_utils
 from autocnet.utils.utils import make_homogeneous, normalize_vector
+
+# set up the logger file
+log = logging.getLogger(__name__)
 
 try:
     import cv2
@@ -207,7 +210,7 @@ def update_fundamental_mask(F, x1, x2, threshold=1.0, index=None, method='reproj
     elif method == 'fundamental':
         error = compute_fundamental_error(F, x1, x2)
     else:
-        warnings.warn('Unknown error method.  Options are "reprojection" or "fundamental".')
+        log.warning('Unknown error method.  Options are "reprojection" or "fundamental".')
     mask = pd.DataFrame(np.abs(error) <= threshold, index=index, columns=['fundamental'])
     if index is not None:
         mask.index = index
@@ -295,7 +298,7 @@ def compute_fundamental_matrix(kp1, kp2, method='mle', reproj_threshold=2.0,
         raise ValueError("Unknown estimation method. Choices are: 'lme', 'ransac', 'lmeds', '8point', or 'normal'.")
 
     if len(kp1) == 0 or len(kp2) == 0:
-        warnings.warn("F-matix computation failed. One of the keypoint args is empty. kp1:{}, kp2:{}.".format(len(kp1), len(kp2)))
+        log.warning("F-matix computation failed. One of the keypoint args is empty. kp1:{}, kp2:{}.".format(len(kp1), len(kp2)))
         return None, None
 
     # OpenCV wants arrays
@@ -312,10 +315,10 @@ def compute_fundamental_matrix(kp1, kp2, method='mle', reproj_threshold=2.0,
                                          ransacReprojThreshold=reproj_threshold,
                                          confidence=confidence)
     if F is None:
-        warnings.warn("F computation failed with no result. Returning None.")
+        log.warning("F computation failed with no result. Returning None.")
         return None, None
     if F.shape != (3,3):
-        warnings.warn('F computation fell back to 7-point algorithm, not setting F.')
+        log.warning('F computation fell back to 7-point algorithm, not setting F.')
         return None, None
     # Ensure that the singularity constraint is met
     F = enforce_singularity_constraint(F)
@@ -337,7 +340,7 @@ def compute_fundamental_matrix(kp1, kp2, method='mle', reproj_threshold=2.0,
         p1 = camera.camera_from_f(F)
         p = camera.idealized_camera()
         if kp1[mask].shape[0] <=12 or kp2[mask].shape[0] <=12:
-            warnings.warn("Unable to apply MLE.  Not enough correspondences.  Returning with a RANSAC computed F matrix.")
+            log.warning("Unable to apply MLE.  Not enough correspondences.  Returning with a RANSAC computed F matrix.")
             return F, mask
 
         # Apply Levenber-Marquardt to perform a non-linear lst. squares fit
