@@ -330,7 +330,7 @@ class TestEdge(unittest.TestCase):
         # populated
         with self.assertLogs() as captured:
             e.overlap_check()
-        self.assertTrue("Overlap between" not in captured.records[0].getMessage()) # and it is the proper one
+        self.assertTrue("Overlap between" not in captured.records[0].getMessage()) 
 
         # Should work after MBRs are set
         e["source_mbr"] = (1, 1, 1, 1)
