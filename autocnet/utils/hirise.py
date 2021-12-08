@@ -3,7 +3,12 @@ from glob import glob
 import textwrap
 import geopandas as gpd
 
-import kalasiris as isis
+try:
+    import kalasiris as isis
+except Exception as exception:
+    from autocnet.utils.utils import FailedImport
+    isis = FailedImport(exception)
+    
 from subprocess import CalledProcessError
 
 from plio.io.io_gdal import GeoDataset

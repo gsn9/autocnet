@@ -12,7 +12,7 @@ import unittest
 import numpy as np
 import numpy.testing as npt
 from autocnet.cg import change_detection as cd
-
+from autocnet.utils.utils import FailedImport
 
 class TestISIS(unittest.TestCase):
 
@@ -20,16 +20,18 @@ class TestISIS(unittest.TestCase):
         arr1 = np.array([1.0, 2.0, -3.4028227e+38])
         arr2 = np.array([1.0, 3.0, 0])
 
-        npt.assert_array_equal(
-            np.array([0, -1.0, 0]),
-            cd.image_diff(arr1, arr2)
-        )
+        if not isinstance(cd.isis, FailedImport):
+            npt.assert_array_equal(
+                np.array([0, -1.0, 0]),
+                cd.image_diff(arr1, arr2)
+            )
 
     def test_image_ratio(self):
         arr1 = np.array([1.0, 4.0, -3.4028227e+38])
         arr2 = np.array([1.0, 2.0, 0])
 
-        npt.assert_array_equal(
-            np.array([1.0, 2.0, 0]),
-            cd.image_ratio(arr1, arr2)
-        )
+        if not isinstance(cd.isis, FailedImport):
+            npt.assert_array_equal(
+                np.array([1.0, 2.0, 0]),
+                cd.image_ratio(arr1, arr2)
+            )
