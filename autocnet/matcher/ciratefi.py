@@ -1,5 +1,6 @@
 import math
-import warnings
+# import warnings
+import logging
 from bisect import bisect_left
 
 import cv2
@@ -11,6 +12,7 @@ from scipy.ndimage.interpolation import zoom
 
 import autocnet.utils.utils as util
 
+log = logging.getLogger(__name__)
 
 def cifi(template, search_image, thresh=90, use_percentile=True,
          radii=list(range(1,12)), scales=[0.5, 0.57, 0.66,  0.76, 0.87, 1.0], verbose=False):
@@ -75,6 +77,7 @@ def cifi(template, search_image, thresh=90, use_percentile=True,
 
     radii = np.asarray(radii)
     if not radii.size or not np.any(radii):
+        log.error('Input radii list is empty')
         raise ValueError('Input radii list is empty')
 
     scales = np.asarray(scales)
@@ -82,10 +85,11 @@ def cifi(template, search_image, thresh=90, use_percentile=True,
         raise ValueError('Input scales list is empty')
 
     if max(radii) > max(template.shape)/2:
-        warnings.warn('Max Radii is larger than original template, this may produce sub-par results.'
+        log.warning('Max Radii is larger than original template, this may produce sub-par results.'
                       'Max radii: {} max template dimension: {}'.format(max(radii), max(template.shape)))
 
     if thresh < -1. or thresh > 1. and not use_percentile:
+        log.error(f'Thresholds must be in range [-1,1] when not using percentiles. Got: {thresh}')
         raise ValueError('Thresholds must be in range [-1,1] when not using percentiles. Got: {}'
                          .format(thresh))
 
@@ -162,7 +166,7 @@ def cifi(template, search_image, thresh=90, use_percentile=True,
     fg_candidate_pixels = np.array([(y, x) for (y, x), coeff in np.ndenumerate(coeffs) if coeff >= thresh])
 
     if fg_candidate_pixels.size == 0:
-        warnings.warn('Cifi returned empty set.')
+        log.warning('Cifi returned empty set.')
 
     if verbose: # pragma: no cover
         plt.imshow(coeffs, interpolation='none')
@@ -244,25 +248,30 @@ def rafi(template, search_image, candidate_pixels, best_scales, thresh=95,
     # check inputs for validity
 
     if search_image.shape < template.shape:
+        log.error('Template Image size error')
         raise ValueError('Template Image is smaller than Search Image for template of'
                          'size: {} and search image of size: {}'
                          .format(template.shape, search_image.shape))
 
     candidate_pixels = np.asarray(candidate_pixels)
     if not candidate_pixels.size or not np.any(candidate_pixels):
+        log.error('empty pixel list error')
         raise ValueError('cadidate pixel list is empty')
 
     best_scales = np.asarray(best_scales, dtype=np.float32)
     if not best_scales.size or not np.any(best_scales):
+        log.error('scale list empty')
         raise ValueError('best_scale list is empty')
 
     if best_scales.shape != search_image.shape:
+        log.error('Error:: image shape does not match scale')
         raise ValueError('Search image and scales must be of the same shape '
                          'got: best scales shape: {}, search image shape: {}'
                          .format(best_scales.shape, search_image.shape))
 
     radii = np.asarray(radii, dtype=int)
     if not radii.size or not np.any(radii):
+        log.error('Error:: input radii list empty')
         raise ValueError('Input radii list is empty')
 
     best_scales = np.asarray(best_scales, dtype=float)
@@ -270,14 +279,16 @@ def rafi(template, search_image, candidate_pixels, best_scales, thresh=95,
         raise ValueError('Input best_scales list is empty')
 
     if max(radii) > max(template.shape)/2:
-        warnings.warn('Max Radii is larger than original template, this mat produce sub-par results.'
+        log.warning('Max Radii is larger than original template, this may produce sub-par results.'
                       'Max radii: {} max template dimension: {}'.format(max(radii), max(template.shape)))
 
     if thresh < -1. or thresh > 1. and not use_percentile:
+        log.error(f'Thresholds must be in range [-1,1] when not using percentiles. Got: {thresh}')
         raise ValueError('Thresholds must be in range [-1,1] when not using percentiles. Got: {}'
                          .format(thresh))
 
     if alpha <= 0:
+        log.error(f'Alpha: {alpha} not >= 0')
         raise ValueError('Alpha must be >= 0')
     alpha %= 2*math.pi
 
@@ -317,7 +328,7 @@ def rafi(template, search_image, candidate_pixels, best_scales, thresh=95,
             scaled_center_y, scaled_center_x = (math.floor(scaled_img.shape[0]/2),
                                                 math.floor(scaled_img.shape[1]/2))
         except:
-            warnings.warn('{}\' window is to small to use for scale {} at resulting size'
+            log.warning('{}\' window is to small to use for scale {} at resulting size'
                           .format((y, x), best_scales[y, x], scaled_img.shape))
             rafi_alpha_means[i] = np.negative(np.ones(len(alpha_list)))
             continue
@@ -365,7 +376,7 @@ def rafi(template, search_image, candidate_pixels, best_scales, thresh=95,
     best_rotation = best_rotation[rafi_mask]
 
     if sg_candidate_points.size == 0:
-        warnings.warn('Second filter Rafi returned empty set.')
+        log.warning('Second filter Rafi returned empty set.')
 
     if verbose: # pragma: no cover
         plt.imshow(image_pixels, interpolation='none')
@@ -441,37 +452,45 @@ def tefi(template, search_image, candidate_pixels, best_scales, best_angles,
     # check all inputs for validity, probably a better way to do this
 
     if search_image.shape < template.shape:
+        log.error('Error:: template image size is smaller than searched image size')
         raise ValueError('Template Image is smaller than Search Image for template of'
                          'size: {} and search image of size: {}'
                          .format(template.shape, search_image.shape))
 
     candidate_pixels = np.asarray(candidate_pixels)
     if not candidate_pixels.size or not np.any(candidate_pixels):
+        log.error('Error: pixel list is empty')
         raise ValueError('cadidate pixel list is empty')
 
     best_scales = np.asarray(best_scales, dtype=np.float32)
     if not best_scales.size or not np.any(best_scales):
+        log.error('Error: best scale list is empty')
         raise ValueError('best_scale list is empty')
 
     if best_scales.shape != search_image.shape:
+        log.error('Error: search image and scale are not of the same shape')
         raise ValueError('Search image and scales must be of the same shape '
                          'got: best scales shape: {}, search image shape: {}'
                          .format(best_scales.shape, search_image.shape))
 
     best_angles = np.asarray(best_angles, dtype=np.float32)
     if not best_angles.size or not np.any(best_angles):
+        log.error('Error: input best angle list is empty')
         raise ValueError('Input best angle list is empty')
 
     best_scales = np.asarray(best_scales, dtype=float)
     if not best_scales.size or not np.any(best_scales):
+        log.error('Error: input best scale list is empty')
         raise ValueError('Input best_scales list is empty')
 
     if thresh < -1. or thresh > 1. and not use_percentile:
+        log.error(f'Error: threshold out of range')
         raise ValueError('Thresholds must be in range [-1,1] when not using percentiles. Got: {}'
                          .format(thresh))
 
     # Check inputs
     if upsampling < 1:
+        log.error('Error: upsampling not >= 1')
         raise ValueError('Upsampling must be >= 1, got {}'.format(upsampling))
 
     tefi_coeffs = np.zeros(candidate_pixels.shape[0])

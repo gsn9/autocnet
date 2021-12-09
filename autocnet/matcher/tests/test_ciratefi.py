@@ -1,6 +1,8 @@
 import math
 import unittest
 import warnings
+import logging
+import re
 
 import numpy as np
 from imageio import imread
@@ -51,10 +53,16 @@ def offset_template(img, img_coord):
     offset_template = roi.Roi(img, coord_x, coord_y, 5, 5).clip()
     return offset_template
 
-def test_cifi_radii_too_large(template, search):
-    # check all warnings
-    with pytest.warns(UserWarning):
-        ciratefi.cifi(template, search, 1.0, radii=[100], use_percentile=False)
+def test_cifi_radii_too_large(template, search, caplog):
+    # check all logs
+    ciratefi.cifi(template, search, 1.0, radii=[100], use_percentile=False)
+    num_pattern = '\d+'
+    captured_log = caplog.records[0].getMessage()
+    match = re.findall(num_pattern, captured_log)
+    assert (f'Max Radii is larger than original template, '\
+        f'this may produce sub-par results.Max radii: {match[0]} max template dimension: {match[1]}'\
+             == caplog.records[0].getMessage())
+
 
 def test_cifi_bounds_error(template, search):
     with pytest.raises(ValueError), pytest.warns(UserWarning):
@@ -83,13 +91,12 @@ def test_cifi(template, search, cifi_thresh, radii):
     assert pixels.size in range(0,search.size)
 
 @pytest.mark.filterwarnings('ignore::UserWarning')  # skimage deprecation warnings to move to new defaults
-def test_rafi_warning(template, search):
+def test_rafi_warning(template, search,caplog):
     rafi_pixels = [(10, 10)]
     rafi_scales = np.ones(search.shape, dtype=float)
-    with pytest.warns(UserWarning):
-        ciratefi.rafi(template, search, rafi_pixels,
-              rafi_scales, thresh=1, radii=[100],
-              use_percentile=False)
+    ciratefi.rafi(template, search, rafi_pixels,
+            rafi_scales, thresh=1, radii=[100],
+            use_percentile=False)
 
 def test_rafi_bounds_error(template, search):
     rafi_pixels = [(10, 10)]
