@@ -1,4 +1,4 @@
-import warnings
+import logging
 
 import numpy as np
 import pandas as pd
@@ -7,6 +7,8 @@ import cv2
 
 FLANN_INDEX_KDTREE = 1  # Algorithm to set centers,
 DEFAULT_FLANN_PARAMETERS = dict(algorithm=FLANN_INDEX_KDTREE, trees=3)
+
+log = logging.getLogger(__name__)
 
 def match(edge, k=2, **kwargs):
     """
@@ -208,7 +210,7 @@ class FlannMatcher(object):
                                     qid,
                                     j.distance))
                 else:
-                    warnings.warn('Likely self neighbor in query!')
+                    log.warning('Likely self neighbor in query!')
         return pd.DataFrame(matched, columns=['source_image', 'source_idx',
                                               'destination_image', 'destination_idx',
                                               'distance']).astype(np.float32)

@@ -24,7 +24,9 @@ from autocnet.transformation import roi
 from autocnet.matcher.subpixel import geom_match_simple
 from autocnet.utils.utils import bytescale
 
-import warnings
+import logging
+
+log = logging.getLogger(__name__)
 
 def generate_ground_points(Session, ground_mosaic, nspts_func=lambda x: int(round(x,1)*1), ewpts_func=lambda x: int(round(x,1)*4), size=(100,100)):
     """
@@ -53,7 +55,7 @@ def generate_ground_points(Session, ground_mosaic, nspts_func=lambda x: int(roun
     if isinstance(ground_mosaic, str):
         ground_mosaic = GeoDataset(ground_mosaic)
 
-    warnings.warn('This function is not well tested. No tests currently exist \
+    log.warning('This function is not well tested. No tests currently exist \
     in the test suite for this version of the function.')
 
     session = Session()
@@ -377,7 +379,7 @@ def propagate_control_network(Session,
                and cartesian) of successfully propagated points
 
     """
-    warnings.warn('This function is not well tested. No tests currently exist \
+    log.warning('This function is not well tested. No tests currently exist \
     in the test suite for this version of the function.')
 
     match_func = check_match_func(match_func)
@@ -440,7 +442,7 @@ def propagate_control_network(Session,
         res = session.query(Points).filter(spatial_intersects).all()
 
         if len(res) > 1:
-            warnings.warn(f"There is more than one point at lon: {lon}, lat: {lat}")
+           log.warning(f"There is more than one point at lon: {lon}, lat: {lat}")
 
         elif len(res) == 1:
             # update existing point with new measures

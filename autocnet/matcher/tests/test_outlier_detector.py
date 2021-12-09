@@ -1,7 +1,6 @@
 import os
 import sys
 import unittest
-import warnings
 
 import pytest
 
@@ -65,11 +64,11 @@ class TestSpatialSuppression(unittest.TestCase):
         self.assertEqual(mask.sum(), 34)
 
     def test_suppress_non_optimal(self):
-        with warnings.catch_warnings(record=True) as w:
+        # with warnings.catch_warnings(record=True) as w:
+        with self.assertLogs() as captured:
             mask, k = cpu_outlier_detector.spatial_suppression(self.df, self.domain, k=30, xkey='lon', ykey='lat')
             self.assertEqual(k, 59)
-            self.assertTrue(issubclass(w[0].category, UserWarning))
-            self.assertTrue('Unable to optimally solve.' == str(w[0].message))
+            self.assertTrue('Unable to optimally solve.' == captured.records[0].getMessage())
             
 
 class testSuppressionRanges(unittest.TestCase):
@@ -95,6 +94,5 @@ class testSuppressionRanges(unittest.TestCase):
 
     def test_normal_distribution(self):
         df = pd.DataFrame(self.r.uniform(0,100,(500, 3)), columns=['x', 'y', 'strength'])
-        with pytest.warns(UserWarning):
-            mask, k = cpu_outlier_detector.spatial_suppression(df, (0, 0, 100, 100), k = 15, xkey='x', ykey='y')
+        mask, k = cpu_outlier_detector.spatial_suppression(df, (0, 0, 100, 100), k = 15, xkey='x', ykey='y')
         self.assertEqual(len(df[mask]), 17)

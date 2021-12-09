@@ -1,4 +1,3 @@
-import warnings
 
 try:
     import cudasift as cs

@@ -1,4 +1,6 @@
-import warnings
+import logging
+
+log = logging.getLogger(__name__)
 
 try:
     import cudasift as cs
@@ -12,7 +14,7 @@ def extract_features(array, nfeatures=None, **kwargs):
     if not nfeatures:
         nfeatures = int(max(array.shape) / 1.25)
     else:
-        warnings.warn('NFeatures specified with the CudaSift implementation.  Please ensure the distribution of keypoints is what you expect.')
+        log.warning('NFeatures specified with the CudaSift implementation.  Please ensure the distribution of keypoints is what you expect.')
 
     siftdata = cs.PySiftData(nfeatures)
     cs.ExtractKeypoints(array, siftdata, **kwargs)

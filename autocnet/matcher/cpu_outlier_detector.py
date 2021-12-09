@@ -1,10 +1,11 @@
 from collections import deque
 import math
-import warnings
+import logging
 
 import numpy as np
 import pandas as pd
 
+log = logging.getLogger(__name__)
 
 def distance_ratio(edge, matches, ratio=0.8, single=False):
     """
@@ -112,7 +113,7 @@ def spatial_suppression(df, bounds, xkey='x', ykey='y', k=60, error_k=0.05, nste
         # Binary search
         mid_idx = int((min_idx + max_idx) / 2)
         if min_idx == mid_idx or mid_idx == max_idx:
-            warnings.warn('Unable to optimally solve.')
+            log.warning('Unable to optimally solve.')
             process = False
         else:
             # Setup to store results
@@ -160,7 +161,7 @@ def spatial_suppression(df, bounds, xkey='x', ykey='y', k=60, error_k=0.05, nste
             max_idx = mid_idx
             if max_idx == 0:
                 process = False
-                warnings.warn('Unable to retrieve {} points. Consider reducing the amount of points you request(k)'.format(k))
+                log.warning('Unable to retrieve {} points. Consider reducing the amount of points you request(k)'.format(k))
             if min_idx == max_idx:
                 process = False
         elif len(result) > k + k * error_k:

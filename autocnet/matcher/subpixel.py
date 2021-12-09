@@ -3,7 +3,7 @@ import json
 from math import modf, floor
 import time
 import numpy as np
-import warnings
+import logging
 
 from subprocess import CalledProcessError
 
@@ -42,6 +42,7 @@ from autocnet.utils.utils import bytescale
 from sqlalchemy import inspect
 
 PIL.Image.MAX_IMAGE_PIXELS = sys.float_info.max
+log = logging.getLogger(__name__)
 
 def check_geom_func(func):
     # TODO: Pain. Stick with one of these and delete this function along with
@@ -414,7 +415,7 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     # Hard check here to see if we are on the absolute edge of the template
     max_coord = np.unravel_index(corrmap.argmax(), corrmap.shape)[::-1]
     if 0 in max_coord or corrmap.shape[0]-1 == max_coord[0] or corrmap.shape[1]-1 == max_coord[1]:
-        warnings.warn('Maximum correlation is at the edge of the template. Results are ambiguous.', UserWarning)
+        log.warning('Maximum correlation is at the edge of the template. Results are ambiguous.')
         return [None] * 4
 
     if verbose:
@@ -518,7 +519,7 @@ def subpixel_template_classic(sx, sy, dx, dy,
     #print(f'{len(isis.get_isis_special_pixels(s_image))} chip sps: ', isis.get_isis_special_pixels(s_image))
 
     if d_roi.variance == 0:
-        warnings.warn('Input ROI has no variance.')
+        log.warning('Input ROI has no variance.')
         return [None] * 4
 
     if (s_image is None) or (d_template is None):
@@ -640,7 +641,7 @@ def subpixel_template(sx, sy, dx, dy,
     # Hard check here to see if we are on the absolute edge of the template
     max_coord = np.unravel_index(corrmap.argmax(), corrmap.shape)[::-1]
     if 0 in max_coord or corrmap.shape[0]-1 == max_coord[0] or corrmap.shape[1]-1 == max_coord[1]:
-        warnings.warn('Maximum correlation is at the edge of the template. Results are ambiguous.', UserWarning)
+        log.warning('Maximum correlation is at the edge of the template. Results are ambiguous.')
         return [None] * 4
 
     # Apply the shift to the center of the ROI object

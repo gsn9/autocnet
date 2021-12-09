@@ -1,5 +1,5 @@
 import os
-import warnings
+import logging
 
 import numpy as np
 import pandas as pd
@@ -20,6 +20,8 @@ from autocnet.spatial import isis
 from autocnet.transformation.spatial import reproject, oc2og
 from autocnet.io.db.model import Images
 from autocnet.transformation import roi
+
+log = logging.getLogger(__name__)
 
 def propagate_ground_point(point,
                            match_func='classic',
@@ -207,7 +209,7 @@ def find_most_interesting_ground(apriori_lon_lat,
     interesting = extract_most_interesting(image_roi,  extractor_parameters={'nfeatures':30})
 
     if interesting is None:
-        warnings.warn('No interesting feature found. This is likely caused by either large contiguous no data areas in the base or a mismatch in the base_dtype.')
+        log.warning('No interesting feature found. This is likely caused by either large contiguous no data areas in the base or a mismatch in the base_dtype.')
         return
 
     left_x, _, top_y, _ = image.image_extent
@@ -232,7 +234,7 @@ def find_most_interesting_ground(apriori_lon_lat,
 
         res = session.query(CandidateGroundPoints).filter(ST_DWithin(CandidateGroundPoints._geom, g._geom, threshold)).all()
         if res:
-            warnings.warn(f'Skipping adding a point as another point already exists within {threshold} units.')
+            log.warning(f'Skipping adding a point as another point already exists within {threshold} units.')
         else:
             session.add(g)
 
