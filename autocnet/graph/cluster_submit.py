@@ -20,7 +20,6 @@ from autocnet.utils.utils import import_func
 from autocnet.utils.serializers import JsonEncoder, object_hook
 from autocnet.io.db.model import JobsHistory
 
-# set up the logging file
 log = logging.getLogger(__name__)
 
 def parse_args():  # pragma: no cover
@@ -231,7 +230,7 @@ def manage_messages(args, queue):
 def main():  # pragma: no cover
     args = vars(parse_args())
     # set up the logger
-    logging.basicConfig(level=os.environ.get("autocnet_loglevel", "INFO"))
+    logging.basicConfig(level=os.environ.get("AUTOCNET_LOGLEVEL", "INFO"))
     # Get the message
     queue = StrictRedis(host=args['host'], port=args['port'], db=0)
     manage_messages(args, queue)

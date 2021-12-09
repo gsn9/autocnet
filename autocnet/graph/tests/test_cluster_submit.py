@@ -172,9 +172,21 @@ def test_process_row(along, func, msg_additions, mocker):
     cluster_submit._instantiate_row.assert_called_once()
 
 @pytest.mark.parametrize()
-def _do_something():
-    log.debug("Doing something!")
-    log.info("This is some info")
+def _do_something(log_level):
+    return getattr(log, log_level)(f'Logging at the {log_level}')
+
+def test_do_something(caplog):
+    log_levels = ["critical", "error", "warning", "info", "debug"]
+    
+    for level in log_levels:
+        os.environ["AUTOCNET_LOGLEVEL"] = level
+        _do_something(os.environ["AUTOCNET_LOGLEVEL"])
+
+        for record in caplog.records:
+            # casting the env var and record level to a string for comparison 
+            assert(str(os.environ["AUTOCNET_LOGLEVEL"]).upper() == str(record.levelname).upper())
+            caplog.clear()
+
 
 @pytest.mark.parametrize("along, func, msg_additions",[
                         ([1,2,3,4,5], _do_nothing, {})
@@ -190,7 +202,6 @@ def test_process_generic(along, func, msg_additions, mocker):
     mocker.patch('autocnet.graph.cluster_submit._instantiate_obj', side_effect=_generate_obj)
     mocker.patch('autocnet.graph.network.NetworkCandidateGraph.Session', return_value=True)
     mocker.patch('autocnet.graph.network.NetworkCandidateGraph.config_from_dict')
-    _do_something()
     
     assert not cluster_submit._instantiate_row.called
     assert not cluster_submit._instantiate_obj.called
