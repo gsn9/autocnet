@@ -1,7 +1,7 @@
 import os
 import sys
 import unittest
-import warnings
+
 sys.path.insert(0, os.path.abspath('..'))
 
 import numpy as np
