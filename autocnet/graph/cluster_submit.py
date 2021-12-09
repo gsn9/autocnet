@@ -202,7 +202,6 @@ def manage_messages(args, queue):
             # Should go to a logger someday! (today is that day!)
             log.info(response)
             
-
         out = stdout.getvalue()
         # print to get everything on the logs in the directory
         print(out)
