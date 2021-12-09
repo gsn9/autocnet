@@ -1,6 +1,5 @@
 import math
 import unittest
-import warnings
 import logging
 import re
 
