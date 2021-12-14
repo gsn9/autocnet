@@ -36,6 +36,7 @@ from autocnet.spatial import isis
 from autocnet.io.db.model import Measures, Points, Images, JsonEncoder
 from autocnet.graph.node import NetworkNode
 from autocnet.transformation import roi
+from autocnet.transformation.affine import estimate_affine_transformation
 from autocnet import spatial
 from autocnet.utils.utils import bytescale
 
@@ -148,24 +149,19 @@ def clip_roi(img, center_x, center_y, size_x=200, size_y=200, dtype="uint64"):
     """
     Given an input image, clip a square region of interest
     centered on some pixel at some size.
-
     Parameters
     ----------
     img : ndarray or object
           The input image to be clipped or an object
           with a read_array method that takes a pixels
           argument in the form [xstart, ystart, xstop, ystop]
-
     center_x : Numeric
                The x coordinate to the center of the roi
-
     center_y : Numeric
                The y coordinate to the center of the roi
-
     img_size : int
                1/2 of the total image size. This value is the
                number of pixels grabbed from each side of the center
-
     Returns
     -------
     clipped_img : ndarray
@@ -236,8 +232,8 @@ def subpixel_phase(sx, sy, dx, dy,
     s_roi = roi.Roi(s_img, sx, sy, size_x=image_size[0], size_y=image_size[1])
     d_roi = roi.Roi(d_img, dx, dy, size_x=image_size[0], size_y=image_size[1])
 
-    s_image = s_roi.clip()
-    d_template = d_roi.clip()
+    s_image = s_roi.array
+    d_template = d_roi.array
 
     if s_image.shape != d_template.shape:
 
@@ -262,8 +258,8 @@ def subpixel_phase(sx, sy, dx, dy,
                         size_x=size[0], size_y=size[1])
         d_roi = roi.Roi(d_img, dx, dy,
                         size_x=size[0], size_y=size[1])
-        s_image = s_roi.clip()
-        d_template = d_roi.clip()
+        s_image = s_roi.array
+        d_template = d_roi.array
 
         if (s_image is None) or (d_template is None):
             return None, None, None
@@ -373,8 +369,8 @@ def subpixel_transformed_template(sx, sy, dx, dy,
     except:
         d_template_dtype = None
 
-    s_image = bytescale(s_roi.clip(dtype=s_image_dtype))
-    d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
+    s_image = bytescale(s_roi.array)
+    d_template = bytescale(d_roi.array)
 
     if verbose:
         fig, axs = plt.subplots(1, 5, figsize=(20,10))
@@ -509,8 +505,8 @@ def subpixel_template_classic(sx, sy, dx, dy,
     print(f'd mm: {d_roi.clip().min()} {d_roi.clip().max()}')"""
     #print(f'{len(isis.get_isis_special_pixels(d_roi.clip()))} chip sps : ', isis.get_isis_special_pixels(d_roi.clip()))
 
-    s_image = s_roi.clip()
-    d_template = d_roi.clip()
+    s_image = s_roi.array
+    d_template = d_roi.array
 
     """print('s shape', s_image.shape)
     print('s mean: ', s_image.mean())
@@ -621,8 +617,8 @@ def subpixel_template(sx, sy, dx, dy,
     except:
         d_template_dtype = None
 
-    s_image = bytescale(s_roi.clip(dtype=s_image_dtype))
-    d_template = bytescale(d_roi.clip(dtype=d_template_dtype))
+    s_image = s_roi.array
+    d_template = d_roi.array
 
     if (s_image is None) or (d_template is None):
         return None, None, None, None
@@ -689,8 +685,8 @@ def subpixel_ciratefi(sx, sy, dx, dy, s_img, d_img, search_size=251, template_si
                               size_x=template_size, size_y=template_size)
     s_roi = roi.Roi(s_img, sx, sy,
                                 size_x=search_size, size_y=search_size)
-    template = t_roi.clip()
-    search = s_roi.clip()
+    template = t_roi.array
+    search = s_roi.array
 
     if template is None or search is None:
         return None, None, None
@@ -771,7 +767,7 @@ def iterative_phase(sx, sy, dx, dy, s_img, d_img, size=(51, 51), reduction=11, c
 
     return dx, dy, metrics
 
-def estimate_affine_transformation(destination_coordinates, source_coordinates):
+'''def estimate_affine_transformation(destination_coordinates, source_coordinates):
     """
     Given a set of destination control points compute the affine transformation
     required to project the source control points into the destination.
@@ -793,9 +789,9 @@ def estimate_affine_transformation(destination_coordinates, source_coordinates):
     source_coordinates = np.asarray(source_coordinates)
 
     return tf.estimate_transform('affine', destination_coordinates, source_coordinates)
-
-def geom_match_simple(base_cube,
-                       input_cube,
+'''
+def geom_match_simple(reference_image,
+                       moving_image,
                        bcenter_x,
                        bcenter_y,
                        size_x=60,
@@ -858,63 +854,23 @@ def geom_match_simple(base_cube,
     autocnet.matcher.subpixel.subpixel_phase: for list of kwargs that can be passed to the matcher
     """
     t1 = time.time()
-    if not isinstance(input_cube, GeoDataset):
-        raise Exception("input cube must be a geodataset obj")
-    if not isinstance(base_cube, GeoDataset):
-        raise Exception("match cube must be a geodataset obj")
+    if not isinstance(reference_image, GeoDataset):
+        raise TypeError("reference_image must be a GeoDataset obj")
+    if not isinstance(moving_image, GeoDataset):
+        raise TypeError("moving_image must be a GeoDataset obj")
 
     # Parse the match_func into a function if it comes in as a string
     if not callable(match_func):
         match_func = check_match_func(match_func)
 
-    base_startx = int(bcenter_x - size_x)
-    base_starty = int(bcenter_y - size_y)
-    base_stopx = int(bcenter_x + size_x)
-    base_stopy = int(bcenter_y + size_y)
-
-    image_size = input_cube.raster_size
-    match_size = base_cube.raster_size
-
-    # for now, require the entire window resides inside both cubes.
-    if base_stopx > match_size[0]:
-        raise Exception(f"Window: {base_stopx} > {match_size[0]}, center: {bcenter_x},{bcenter_y}")
-    if base_startx < 0:
-        raise Exception(f"Window: {base_startx} < 0, center: {bcenter_x},{bcenter_y}")
-    if base_stopy > match_size[1]:
-        raise Exception(f"Window: {base_stopy} > {match_size[1]}, center: {bcenter_x},{bcenter_y} ")
-    if base_starty < 0:
-        raise Exception(f"Window: {base_starty} < 0, center: {bcenter_x},{bcenter_y}")
-
-    # specifically not putting this in a try/except, this should never fail
-    center_x, center_y = bcenter_x, bcenter_y
-
-    base_corners = [(base_startx,base_starty),
-                    (base_startx,base_stopy),
-                    (base_stopx,base_stopy),
-                    (base_stopx,base_starty),
-                    (bcenter_x, bcenter_y)]
-
-    dst_corners = []
-    for x,y in base_corners:
-        try:
-            lon, lat = spatial.isis.image_to_ground(base_cube.file_name, x, y)
-            dst_corners.append(
-                spatial.isis.ground_to_image(input_cube.file_name, lon, lat)
-            )
-        except: pass
-
-    if len(dst_corners) < 3:
-        raise ValueError('Unable to find enough points to compute an affine transformation.')
-
-    base_gcps = np.array([*base_corners])
-
-    dst_gcps = np.array([*dst_corners])
-
-    affine = tf.estimate_transform('affine', np.array([*base_gcps]), np.array([*dst_gcps]))
+    # Estimate the transformation between the two images
+    affine = estimate_affine_transformation(reference_image, moving_image, bcenter_x, bcenter_y)
     t2 = time.time()
     print(f'Estimation of the transformation took {t2-t1} seconds.')
-    # read_array not getting correct type by default
 
+
+
+    # Read the arrays with the correct dtype - needs to be in ROI object for dtype checking.
     base_type = isis.isis2np_types[pvl.load(base_cube.file_name)["IsisCube"]["Core"]["Pixels"]["Type"]]
     base_arr = base_cube.read_array(dtype=base_type)
 
@@ -930,9 +886,9 @@ def geom_match_simple(base_cube,
     if verbose:
         fig, axs = plt.subplots(1, 2)
         axs[0].set_title("Base")
-        axs[0].imshow(roi.Roi(bytescale(base_arr, cmin=0), bcenter_x, bcenter_y, 25, 25).clip(), cmap="Greys_r")
+        axs[0].imshow(roi.Roi(bytescale(base_arr, cmin=0), bcenter_x, bcenter_y, 25, 25).array, cmap="Greys_r")
         axs[1].set_title("Projected Image")
-        axs[1].imshow(roi.Roi(bytescale(dst_arr, cmin=0), bcenter_x, bcenter_y, 25, 25).clip(), cmap="Greys_r")
+        axs[1].imshow(roi.Roi(bytescale(dst_arr, cmin=0), bcenter_x, bcenter_y, 25, 25).array, cmap="Greys_r")
         plt.show()
     # Run through one step of template matching then one step of phase matching
     # These parameters seem to work best, should pass as kwargs later
@@ -965,19 +921,19 @@ def geom_match_simple(base_cube,
         fig, axs = plt.subplots(2, 3)
         fig.set_size_inches((30,30))
 
-        oarr = roi.Roi(input_cube.read_array(), sample, line, 150, 150).clip()
+        oarr = roi.Roi(input_cube.read_array(), sample, line, 150, 150).array
         axs[0][2].imshow(bytescale(oarr, cmin=0), cmap="Greys_r")
         axs[0][2].axhline(y=oarr.shape[1]/2, color="red", linestyle="-", alpha=1)
         axs[0][2].axvline(x=oarr.shape[1]/2, color="red", linestyle="-", alpha=1)
         axs[0][2].set_title("Original Registered Image")
 
-        barr = roi.Roi(base_arr, bcenter_x, bcenter_y, size_x, size_y).clip()
+        barr = roi.Roi(base_arr, bcenter_x, bcenter_y, size_x, size_y).array
         axs[0][0].imshow(bytescale(barr, cmin=0), cmap="Greys_r")
         axs[0][0].axhline(y=barr.shape[1]/2, color="red", linestyle="-", alpha=1)
         axs[0][0].axvline(x=barr.shape[1]/2, color="red", linestyle="-", alpha=1)
         axs[0][0].set_title("Base")
 
-        darr = roi.Roi(dst_arr, x, y, size_x, size_y).clip()
+        darr = roi.Roi(dst_arr, x, y, size_x, size_y).array
         axs[0][1].imshow(bytescale(darr, cmin=0), cmap="Greys_r")
         axs[0][1].axhline(y=darr.shape[1]/2, color="red", linestyle="-", alpha=1)
         axs[0][1].axvline(x=darr.shape[1]/2, color="red", linestyle="-", alpha=1)
@@ -1148,7 +1104,7 @@ def geom_match_classic(base_cube,
     if verbose:
         fig, axs = plt.subplots(1, 3)
         fig.set_size_inches((30,30))
-        darr = roi.Roi(input_cube.read_array(dtype=dst_type), sample, line, 100, 100).clip()
+        darr = roi.Roi(input_cube.read_array(dtype=dst_type), sample, line, 100, 100).array
         axs[1].imshow(darr, cmap="Greys_r")
         axs[1].scatter(x=[darr.shape[1]/2], y=[darr.shape[0]/2], s=10, c="red")
         axs[1].set_title("Original Registered Image")
@@ -1982,91 +1938,9 @@ def fourier_mellen(img1, img2, verbose=False, phase_kwargs={}):
 
     return newx, newy, error
 
-def estimate_affine_transformation(base_cube,
-                                   input_cube,
-                                   bcenter_x,
-                                   bcenter_y,
-                                   size_x=60,
-                                   size_y=60):
-    """
-    Using the a priori sensor model, project corner and center points from the base_cube into
-    the input_cube and use these points to estimate an affine transformation.
 
-    Parameters
-    ----------
-    base_cube:  plio.io.io_gdal.GeoDataset
-                source image
-    input_cube: plio.io.io_gdal.GeoDataset
-                destination image; gets matched to the source image
-    bcenter_x:  int
-                sample location of source measure in base_cube
-    bcenter_y:  int
-                line location of source measure in base_cube
-    size_x:     int
-                half-height of the subimage used in the affine transformation
-    size_y:     int
-                half-width of the subimage used in affine transformation
-
-    Returns
-    -------
-    affine : object
-             The affine transformation object
-
-    """
-    t1 = time.time()
-    if not isinstance(input_cube, GeoDataset):
-        raise Exception(f"Input cube must be a geodataset obj, but is type {type(input_cube)}.")
-    if not isinstance(base_cube, GeoDataset):
-        raise Exception(f"Match cube must be a geodataset obj, but is type {type(base_cube)}.")
-
-    base_startx = int(bcenter_x - size_x)
-    base_starty = int(bcenter_y - size_y)
-    base_stopx = int(bcenter_x + size_x)
-    base_stopy = int(bcenter_y + size_y)
-
-    match_size = base_cube.raster_size
-
-    # for now, require the entire window resides inside both cubes.
-    if base_stopx > match_size[0]:
-        raise Exception(f"Window: {base_stopx} > {match_size[0]}, center: {bcenter_x},{bcenter_y}")
-    if base_startx < 0:
-        raise Exception(f"Window: {base_startx} < 0, center: {bcenter_x},{bcenter_y}")
-    if base_stopy > match_size[1]:
-        raise Exception(f"Window: {base_stopy} > {match_size[1]}, center: {bcenter_x},{bcenter_y} ")
-    if base_starty < 0:
-        raise Exception(f"Window: {base_starty} < 0, center: {bcenter_x},{bcenter_y}")
-
-    base_corners = [(base_startx,base_starty),
-                    (base_startx,base_stopy),
-                    (base_stopx,base_stopy),
-                    (base_stopx,base_starty),
-                    (bcenter_x, bcenter_y)]
-    
-    dst_corners = []
-    passing_base_corners = []
-    for x,y in base_corners:
-        try:
-            print('Processing: ', x,y)
-            lon, lat = spatial.isis.image_to_ground(base_cube.file_name, x, y)
-            dst_corners.append(
-                spatial.isis.ground_to_image(input_cube.file_name, lon, lat)
-            )
-            passing_base_corners.append((x, y))
-        except Exception as e: 
-            print(e)
-
-    if len(dst_corners) < 3:
-        raise ValueError(f'Unable to find enough points to compute an affine transformation. Found {len(dst_corners)} points, but need at least 3.')
-
-    base_gcps = np.array([*passing_base_corners])
-
-    dst_gcps = np.array([*dst_corners])
-
-    affine = tf.estimate_transform('affine', np.array([*base_gcps]), np.array([*dst_gcps]))
-    t2 = time.time()
-    print(f'Estimation of the transformation took {t2-t1} seconds.')
-    return affine
-
+# TODO: This func should be in transformation.affine with 
+# signature (array_to_warp, affine, order=3).
 def affine_warp_image(base_cube, input_cube, affine, order=3):
     """
     Given a base image, an input image, and an affine transformation, return
@@ -2226,7 +2100,6 @@ def subpixel_register_point_smart(pointid,
         print('geom_match image:', destination_node['image_path'])
         print('geom_func', geom_func)
         
-        # Apply the transformation
         try:
             affine = estimate_affine_transformation(source_node.geodata, 
                                                         destination_node.geodata,
@@ -2242,6 +2115,7 @@ def subpixel_register_point_smart(pointid,
             updated_measures.append([None, None, m])
             continue
         
+        # Here is where I need to get the two ROIs extracted. Then I need to get the destination ROI affine transformed to the source ROI
         base_arr, dst_arr = affine_warp_image(source_node.geodata, 
                                               destination_node.geodata, 
                                               affine)
@@ -2256,8 +2130,8 @@ def subpixel_register_point_smart(pointid,
             if match_kwarg['template_size'][1] < size_y:
                 size_y = match_kwarg['template_size'][1]
         
-        base_roi = roi.Roi(base_arr, source.apriorisample, source.aprioriline, size_x=size_x, size_y=size_y).clip()
-        dst_roi = roi.Roi(dst_arr, source.apriorisample, source.aprioriline, size_x=size_x, size_y=size_y).clip()
+        base_roi = roi.Roi(base_arr, source.apriorisample, source.aprioriline, size_x=size_x, size_y=size_y).array
+        dst_roi = roi.Roi(dst_arr, source.apriorisample, source.aprioriline, size_x=size_x, size_y=size_y).array
 
         if np.isnan(base_roi).any() or np.isnan(dst_roi).any():
             print('Unable to process due to NaN values in the input data.')
@@ -2302,8 +2176,8 @@ def subpixel_register_point_smart(pointid,
                 print('Unable to match with this parameter set.')
                 continue
                
-            base_roi = roi.Roi(base_arr, source.apriorisample, source.aprioriline, size_x=size_x, size_y=size_y).clip()
-            dst_roi = roi.Roi(dst_arr, x, y, size_x=size_x, size_y=size_y).clip()
+            base_roi = roi.Roi(base_arr, source.apriorisample, source.aprioriline, size_x=size_x, size_y=size_y).array
+            dst_roi = roi.Roi(dst_arr, x, y, size_x=size_x, size_y=size_y).array
 
             #TODO: When refactored, all this type conversion should happen in the ROI object.
             base_roi = img_as_float32(base_roi)

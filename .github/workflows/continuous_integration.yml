@@ -51,6 +51,9 @@ jobs:
         run: |
           curl "${{ env.hirise-pds-url }}/PSP_010502_2090_RED5_0.IMG" -o $GITHUB_WORKSPACE/test-resources/PSP_010502_2090_RED5_0.img
           curl "${{ env.hirise-pds-url }}/PSP_010502_2090_RED5_1.IMG" -o $GITHUB_WORKSPACE/test-resources/PSP_010502_2090_RED5_1.img
+          curl "https://asc-isisdata.s3.us-west-2.amazonaws.com/autocnet_test_data/B08_012650_1780_XN_02S046W.l1.cal.destriped.crop.cub" -o tests/test_subpixel_match/B08_012650_1780_XN_02S046W.l1.cal.destriped.crop.cub
+          curl "https://asc-isisdata.s3.us-west-2.amazonaws.com/autocnet_test_data/D16_033458_1785_XN_01S046W.l1.cal.destriped.crop.cub" -o tests/test_subpixel_match/D16_033458_1785_XN_01S046W.l1.cal.destriped.crop.cub
+          curl "https://asc-isisdata.s3.us-west-2.amazonaws.com/autocnet_test_data/J04_046447_1777_XI_02S046W.l1.cal.destriped.crop.cub" -o tests/test_subpixel_match/J04_046447_1777_XI_02S046W.l1.cal.destriped.crop.cub
       - name: Exit isis env
         run: conda deactivate
       - name: Checkout Code

@@ -107,8 +107,12 @@ def pattern_match(template, image, upsampling=16, metric=cv2.TM_CCOEFF_NORMED, e
         The x offset
     y : float
         The y offset
-    strength : float
+    max_corr : float
                The strength of the correlation in the range [-1, 1].
+    result : ndarray
+             (m,n) correlation matrix showing the correlation for all tested coordinates. The
+             maximum correlation is reported when the upper left hand corner of the template
+             maximally correlates with the image.
     """
     if upsampling < 1:
         raise ValueError
@@ -130,12 +134,12 @@ def pattern_match(template, image, upsampling=16, metric=cv2.TM_CCOEFF_NORMED, e
         x, y = (max_loc[0], max_loc[1])
 
     # Compute the idealized shift (image center)
-    ideal_y = u_image.shape[0] / 2
-    ideal_x = u_image.shape[1] / 2
+    ideal_y = u_image.shape[0] / 2.
+    ideal_x = u_image.shape[1] / 2.
 
     # Compute the shift from template upper left to template center
-    y += (u_template.shape[0] / 2)
-    x += (u_template.shape[1] / 2)
+    y += (u_template.shape[0] / 2.)
+    x += (u_template.shape[1] / 2.)
 
     x = (x - ideal_x) / upsampling
     y = (y - ideal_y) / upsampling

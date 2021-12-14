@@ -53,6 +53,10 @@ We suggest using Anaconda Python to install Autocnet within a virtual environmen
 2. Get the Postgresql with Postgis container and run it `docker run --name testdb -e POSTGRES_PASSOWRD='NotTheDefault' -e POSTGRES_USER='postgres' -p 5432:5432 -d mdillon/postgis`
 3. Run the test suite: `pytest autocnet`
 
+## How to skip long running tests
+
+The integration tests, inside the tests direcectory at the root of the project, can be long running. We have marked those as such and one can skip these long running integration tests by add `-m "not long"` to their pytest command.
+
 ## Simple Network Examples:
 
 

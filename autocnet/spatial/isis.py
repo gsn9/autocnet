@@ -253,11 +253,15 @@ def point_info(
                 # convert all pixels to PLIO pixels from ISIS
                 r["Sample"] -= .5
                 r["Line"] -= .5
+                
                 results.append(r)
             else:
-                raise ValueError(
-                    f"ISIS campt completed, but reported an error: {r['Error']}"
-                )
+                r["Sample"] = None
+                r["Line"] = None
+                results.append(r)
+                #raise ValueError(
+                #    f"ISIS campt completed, but reported an error: {r['Error']}"
+                #)
 
     if isinstance(x, (abc.Sequence, np.ndarray)):
         return results
@@ -271,6 +275,7 @@ def image_to_ground(
         line,
         lontype="PositiveEast360Longitude",
         lattype="PlanetocentricLatitude",
+        allowoutside=False
 ):
     """
     Returns a two-tuple of numpy arrays or a two-tuple of floats, where
@@ -306,7 +311,7 @@ def image_to_ground(
         are possible.  Please see the campt or mappt documentation.
 
     """
-    res = point_info(cube_path, sample, line, "image")
+    res = point_info(cube_path, sample, line, "image", allowoutside=allowoutside)
 
     if isinstance(sample, (abc.Sequence, np.ndarray)):
         lon_list = list()
@@ -333,7 +338,7 @@ def _get_value(obj):
         return obj
 
 
-def ground_to_image(cube_path, lon, lat):
+def ground_to_image(cube_path, lon, lat, allowoutside=False):
     """
     Returns a two-tuple of numpy arrays or a two-tuple of floats, where
     the first element of the tuple is the sample(s) and the second
@@ -358,7 +363,7 @@ def ground_to_image(cube_path, lon, lat):
         Latitude coordinate(s).
 
     """
-    res = point_info(cube_path, lon, lat, "ground")
+    res = point_info(cube_path, lon, lat, "ground", allowoutside=allowoutside)
 
     if isinstance(lon, (abc.Sequence, np.ndarray)):
         samples, lines = np.asarray([[r["Sample"], r["Line"]] for r in res]).T
