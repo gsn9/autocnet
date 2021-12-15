@@ -90,3 +90,6 @@ nodeids
 
 # VSCode
 launch.json
+
+# ASC Formats
+*.cub

@@ -105,12 +105,6 @@ def test_subpixel_template_at_edge(apollo_subsets, loc, failure):
                                                         func=func)
             assert nx == 50.5
 
-def test_estimate_affine_transformation():
-    a = [[0,1], [0,0], [1,0], [1,1], [0,1]]
-    b = [[1, 2], [1, 1], [2, 1], [2, 2], [1, 2]]
-    transform = sp.estimate_affine_transformation(a,b)
-    assert isinstance(transform, tf.AffineTransform)
-
 def test_subpixel_transformed_template(apollo_subsets):
     a = apollo_subsets[0]
     b = apollo_subsets[1]

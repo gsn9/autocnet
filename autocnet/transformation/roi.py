@@ -1,6 +1,8 @@
 from math import modf, floor
 import numpy as np
 
+from autocnet.transformation import dtypes
+import pvl
 
 class Roi():
     """
@@ -38,11 +40,10 @@ class Roi():
     bottom_y : int
                The bottom image coordinate in imge space
     """
-    def __init__(self, data, x, y, size_x=200, size_y=200, dtype=None, ndv=None, ndv_threshold=0.5):
+    def __init__(self, data, x, y, size_x=200, size_y=200, ndv=None, ndv_threshold=0.5):
         self.data = data
         self.x = x
         self.y = y
-        self.dtype = dtype
         self.size_x = size_x
         self.size_y = size_y
         self.ndv = ndv
@@ -140,7 +141,7 @@ class Roi():
     @property
     def center(self):
         ie = self.image_extent
-        return (ie[1] - ie[0])/2, (ie[3]-ie[2])/2
+        return (ie[1] - ie[0])/2.+0.5, (ie[3]-ie[2])/2.+0.5
 
     @property
     def is_valid(self):
@@ -165,28 +166,26 @@ class Roi():
             data = self.data[pixels[2]:pixels[3]+1,pixels[0]:pixels[1]+1]
         else:
             # Have to reformat to [xstart, ystart, xnumberpixels, ynumberpixels]
+            # TODO: I think this will result in an incorrect obj.center when the passed data is a GeoDataset
             pixels = [pixels[0], pixels[2], pixels[1]-pixels[0]+1, pixels[3]-pixels[2]+1]
-            data = self.data.read_array(pixels=pixels, dtype=self.dtype)
+            data = self.data.read_array(pixels=pixels)
         return data
 
     def clip(self, dtype=None):
         """
         Compatibility function that makes a call to the array property.
-
         Warning: The dtype passed in via this function resets the dtype attribute of this
         instance.
-
         Parameters
         ----------
         dtype : str
                 The datatype to be used when reading the ROI information if the read
                 occurs through the data object using the read_array method. When using
                 this object when the data are a numpy array the dtype has not effect.
-
         Returns
         -------
          : ndarray
            The array attribute of this object.
         """
-        self.dtype = dtype
+        #self.dtype = dtype
         return self.array

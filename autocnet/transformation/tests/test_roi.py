@@ -19,7 +19,7 @@ def test_geodata_is_valid(geodata_b):
 
 def test_center(array_with_nodata):
     roi = Roi(array_with_nodata, 5, 5)
-    assert roi.center == (5,5)
+    assert roi.center == (5.5,5.5)
 
 @pytest.mark.parametrize("ndv, truthy", [(None, True),
                                          (0, False)])
