@@ -1,7 +1,6 @@
 from math import modf, floor
 import numpy as np
 
-from autocnet.transformation import dtypes
 import pvl
 
 class Roi():

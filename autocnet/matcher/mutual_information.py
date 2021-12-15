@@ -3,8 +3,9 @@ from math import floor
 import numpy as np
 
 from scipy.ndimage.measurements import center_of_mass
+from skimage.transform import AffineTransform
 
-def mutual_information(t1, t2, **kwargs):
+def mutual_information(reference_roi, walking_roi, affine=AffineTransform(), **kwargs):
     """
     Computes the correlation coefficient between two images using a histogram
     comparison (Mutual information for joint histograms). The corr_map coefficient
@@ -13,12 +14,13 @@ def mutual_information(t1, t2, **kwargs):
     Parameters
     ----------
 
-    t1 : ndarray
-         First image to use in the histogram comparison
-
-    t2 : ndarray
-         Second image to use in the histogram comparison
-
+    reference_roi : Roi
+                    First image to use in the histogram comparison
+    
+    moving_roi : Roi
+                   Second image to use in the histogram comparison
+    
+    
     Returns
     -------
 
@@ -30,16 +32,23 @@ def mutual_information(t1, t2, **kwargs):
     --------
     numpy.histogram2d : for the kwargs that can be passed to the comparison
     """
-
-    if np.isnan(t1).any() or np.isnan(t2).any():
+    
+    reference_image = reference_roi.clip()
+    walking_template = walking_roi.clip(affine)
+    
+    # walking_template = tf.warp(walking_template, affine, order=3)
+    
+    
+    if reference_roi.ndv == None or walking_roi.ndv == None:
         print('Unable to process due to NaN values in the input data')
         return
     
-    if t1.shape != t2.shape:
+    # print(reference_roi.size_y, walking_roi.size_y)
+    if reference_roi.size_y != walking_roi.size_y and reference_roi.size_x != walking_roi.size_x:
         print('Unable compute MI. Image sizes are not identical.')
         return
 
-    hgram, x_edges, y_edges = np.histogram2d(t1.ravel(),t2.ravel(), **kwargs)
+    hgram, x_edges, y_edges = np.histogram2d(reference_image.ravel(), walking_template.ravel(), **kwargs)
 
     # Convert bins counts to probability values
     pxy = hgram / float(np.sum(hgram))
