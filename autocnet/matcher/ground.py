@@ -326,6 +326,6 @@ def find_ground_reference(point,
         point = session.query(Points).filter(Points.id == point.id).one()
 
         point.measures.append(m)
-        point.reference_index = len(point.measures) - 1  # The measure that was just appended is the new reference
+        point.reference_index = m.id# len(point.measures) - 1  # The measure that was just appended is the new reference
 
     print('successfully added a reference measure to the database.')
