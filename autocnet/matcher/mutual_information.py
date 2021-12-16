@@ -1,5 +1,5 @@
 from math import floor
-
+from autocnet.transformation.roi import Roi
 import numpy as np
 
 from scipy.ndimage.measurements import center_of_mass
@@ -33,20 +33,14 @@ def mutual_information(reference_roi, walking_roi, affine=AffineTransform(), **k
     numpy.histogram2d : for the kwargs that can be passed to the comparison
     """
     
-    reference_image = reference_roi.clip()
-    walking_template = walking_roi.clip(affine)
-    
-    # walking_template = tf.warp(walking_template, affine, order=3)
-    
+    reference_image = reference_roi.array
+    walking_template = walking_roi.array
     
     if reference_roi.ndv == None or walking_roi.ndv == None:
-        print('Unable to process due to NaN values in the input data')
-        return
+        raise Exception('Unable to process due to NaN values in the input data')
     
-    # print(reference_roi.size_y, walking_roi.size_y)
     if reference_roi.size_y != walking_roi.size_y and reference_roi.size_x != walking_roi.size_x:
-        print('Unable compute MI. Image sizes are not identical.')
-        return
+        raise Exception('Unable compute MI. Image sizes are not identical.')
 
     hgram, x_edges, y_edges = np.histogram2d(reference_image.ravel(), walking_template.ravel(), **kwargs)
 
@@ -101,32 +95,48 @@ def mutual_information_match(d_template, s_image, subpixel_size=3,
     if func == None:
         func = mutual_information
 
-    image_size = s_image.shape
-    template_size = d_template.shape
+
+    if isinstance(s_image, Roi):
+        image_size = s_image.array.shape#(s_image.size_x, s_image.size_y)
+        template_size = d_template.array.shape# (d_template.size_x, d_template.size_y)
+
+    else:
+        image_size = s_image.shape
+        template_size = d_template.shape
 
     y_diff = image_size[0] - template_size[0]
     x_diff = image_size[1] - template_size[1]
 
     max_corr = -np.inf
-    corr_map = np.zeros((y_diff+1, x_diff+1))
+    corr_map = np.zeros(template_size)
     max_i = -1  # y
     max_j = -1  # x
-    for i in range(y_diff+1):
-        for j in range(x_diff+1):
-            sub_image = s_image[i:i+template_size[1],  # y
-                                j:j+template_size[0]]  # x
-            corr = func(sub_image, d_template, **kwargs)
+
+    s_image_extent = s_image.image_extent
+
+    for i in range(s_image_extent[2],s_image_extent[3]):
+
+        for j in range(s_image_extent[0],s_image_extent[1]):
+
+            s_image.x = (j)#*(1+template_size[0]))/2
+            s_image.y = (i)#*(1+template_size[1]))/2
+           
+            # sub_image = s_image[i:i+template_size[1],  # y
+            #                     j:j+template_size[0]]  # x
+            corr = func(s_image, d_template, **kwargs)
             if corr > max_corr:
                 max_corr = corr
-                max_i = i
-                max_j = j
-            corr_map[i, j] = corr
+                max_i = i - s_image_extent[2]
+                max_j = j - s_image_extent[0]
+            
+
+            corr_map[i- s_image_extent[2], j - s_image_extent[0]] = corr
 
     y, x = np.unravel_index(np.argmax(corr_map, axis=None), corr_map.shape)
 
     upper = int(2 + floor(subpixel_size / 2))
     lower = upper - 1
-    # x, y are the location of the upper left hand corner of the template in the image
+
     area = corr_map[y-lower:y+upper,
                     x-lower:x+upper]
 
@@ -134,17 +144,14 @@ def mutual_information_match(d_template, s_image, subpixel_size=3,
     cmass  = center_of_mass(area)
 
     if area.shape != (subpixel_size+2, subpixel_size+2):
-        print("Max correlation is too close to the boundary.")
         return None, None, 0, None
 
     subpixel_y_shift = subpixel_size - 1 - cmass[0]
     subpixel_x_shift = subpixel_size - 1 - cmass[1]
-
+    y = abs(y - (corr_map.shape[1])/2)
+    x = abs(x - (corr_map.shape[0])/2)
     y += subpixel_y_shift
     x += subpixel_x_shift
-
-    # Compute the idealized shift (image center)
-    y -= (s_image.shape[0] / 2) - (d_template.shape[0] / 2)
-    x -= (s_image.shape[1] / 2) - (d_template.shape[1] / 2)
-
-    return float(x), float(y), float(max_corr), corr_map
+    new_affine = AffineTransform(translation=(-x, -y))
+    return new_affine, float(max_corr), corr_map
+    # return float(x), float(y), float(max_corr), corr_map
