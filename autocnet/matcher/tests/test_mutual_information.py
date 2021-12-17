@@ -33,4 +33,19 @@ def test_mutual_information():
     assert max_corr == 2.9755967600033015
     assert corr_map.shape == (50, 50)
     assert np.min(corr_map) >= 0.0
-    #TODO add assert for affine
+    #TODO add assert test for affine and odd sized s_image 
+
+def test_mutual_information_odd_sized_s_image():
+    d_template = np.array([[i for i in range(50, 101)] for j in range(51)])
+    s_image = np.ones((101, 101))
+
+    s_image[25:76, 25:76] = d_template
+
+    d_template = Roi(d_template, 26, 26, 26, 26, ndv=22222222)
+    s_image = Roi(s_image, 51, 51, 26, 26, ndv=22222222)
+    affine, max_corr, corr_map = mutual_information.mutual_information_match(d_template, s_image, bins=20)
+
+    assert max_corr == 2.9755967600033015
+    assert corr_map.shape == (51, 51)
+    assert np.min(corr_map) >= 0.0
+    
