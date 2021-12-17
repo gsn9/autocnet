@@ -5,7 +5,7 @@ import numpy as np
 from scipy.ndimage.measurements import center_of_mass
 from skimage.transform import AffineTransform
 
-def mutual_information(reference_roi, walking_roi, affine=AffineTransform(), **kwargs):
+def mutual_information(reference_roi, moving_roi, affine=AffineTransform(), **kwargs):
     """
     Computes the correlation coefficient between two images using a histogram
     comparison (Mutual information for joint histograms). The corr_map coefficient
@@ -34,12 +34,12 @@ def mutual_information(reference_roi, walking_roi, affine=AffineTransform(), **k
     """
     
     reference_image = reference_roi.array
-    walking_template = walking_roi.array
+    walking_template = moving_roi.array
     
-    if reference_roi.ndv == None or walking_roi.ndv == None:
+    if reference_roi.ndv == None or moving_roi.ndv == None:
         raise Exception('Unable to process due to NaN values in the input data')
     
-    if reference_roi.size_y != walking_roi.size_y and reference_roi.size_x != walking_roi.size_x:
+    if reference_roi.size_y != moving_roi.size_y and reference_roi.size_x != moving_roi.size_x:
         raise Exception('Unable compute MI. Image sizes are not identical.')
 
     hgram, x_edges, y_edges = np.histogram2d(reference_image.ravel(), walking_template.ravel(), **kwargs)
