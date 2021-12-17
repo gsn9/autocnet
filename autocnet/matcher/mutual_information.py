@@ -33,13 +33,16 @@ def mutual_information(reference_roi, moving_roi, affine=AffineTransform(), **kw
     numpy.histogram2d : for the kwargs that can be passed to the comparison
     """
     
-    reference_image = reference_roi.array
-    walking_template = moving_roi.array
+    # grab ndarray from input Roi's 
+    reference_image = reference_roi.clip()
+    walking_template = moving_roi.clip()
     
-    if reference_roi.ndv == None or moving_roi.ndv == None:
+    # if reference_roi.ndv == None or moving_roi.ndv == None:
+    if np.isnan(reference_image).any() or np.isnan(walking_template).any():
         raise Exception('Unable to process due to NaN values in the input data')
     
     if reference_roi.size_y != moving_roi.size_y and reference_roi.size_x != moving_roi.size_x:
+    # if reference_image.shape != moving_roi.shape:
         raise Exception('Unable compute MI. Image sizes are not identical.')
 
     hgram, x_edges, y_edges = np.histogram2d(reference_image.ravel(), walking_template.ravel(), **kwargs)
@@ -96,13 +99,8 @@ def mutual_information_match(d_template, s_image, subpixel_size=3,
         func = mutual_information
 
 
-    if isinstance(s_image, Roi):
-        image_size = s_image.array.shape#(s_image.size_x, s_image.size_y)
-        template_size = d_template.array.shape# (d_template.size_x, d_template.size_y)
-
-    else:
-        image_size = s_image.shape
-        template_size = d_template.shape
+    image_size = (s_image.size_x * 2, s_image.size_y * 2)
+    template_size = (d_template.size_x * 2, d_template.size_y * 2)
 
     y_diff = image_size[0] - template_size[0]
     x_diff = image_size[1] - template_size[1]
