@@ -162,7 +162,7 @@ class Roi():
         """
         pixels = self.image_extent
         if isinstance(self.data, np.ndarray):
-            data = self.data[pixels[2]:pixels[3],pixels[0]:pixels[1]]
+            data = self.data[pixels[2]:pixels[3]+1,pixels[0]:pixels[1]+1]
         else:
             # Have to reformat to [xstart, ystart, xnumberpixels, ynumberpixels]
             # TODO: I think this will result in an incorrect obj.center when the passed data is a GeoDataset

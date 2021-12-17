@@ -36,6 +36,8 @@ def mutual_information(reference_roi, moving_roi, affine=AffineTransform(), **kw
     # grab ndarray from input Roi's 
     reference_image = reference_roi.clip()
     walking_template = moving_roi.clip()
+
+    # print(f"\nShape's \n{reference_image.shape}\n{walking_template.shape}\n--------")
     
     # if reference_roi.ndv == None or moving_roi.ndv == None:
     if np.isnan(reference_image).any() or np.isnan(walking_template).any():
@@ -99,8 +101,8 @@ def mutual_information_match(d_template, s_image, subpixel_size=3,
         func = mutual_information
 
 
-    image_size = (s_image.size_x * 2, s_image.size_y * 2)
-    template_size = (d_template.size_x * 2, d_template.size_y * 2)
+    image_size = ((s_image.size_x * 2) + 1, (s_image.size_y * 2) + 1)
+    template_size = ((d_template.size_x * 2) + 1, (d_template.size_y * 2) + 1)
 
     y_diff = image_size[0] - template_size[0]
     x_diff = image_size[1] - template_size[1]
@@ -119,7 +121,6 @@ def mutual_information_match(d_template, s_image, subpixel_size=3,
 
     for i in range(starting_y, ending_y):
         for j in range(starting_x, ending_x):
-
             s_image.x = (j)
             s_image.y = (i)
            
@@ -154,4 +155,3 @@ def mutual_information_match(d_template, s_image, subpixel_size=3,
     x += subpixel_x_shift
     new_affine = AffineTransform(translation=(-x, -y))
     return new_affine, float(max_corr), corr_map
-    # return float(x), float(y), float(max_corr), corr_map
