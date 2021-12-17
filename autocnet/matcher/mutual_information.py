@@ -112,15 +112,17 @@ def mutual_information_match(d_template, s_image, subpixel_size=3,
 
     s_image_extent = s_image.image_extent
 
-    for i in range(s_image_extent[2],s_image_extent[3]):
+    starting_y = s_image_extent[2]
+    ending_y = s_image_extent[3]
+    starting_x = s_image_extent[0]
+    ending_x = s_image_extent[1]
 
-        for j in range(s_image_extent[0],s_image_extent[1]):
+    for i in range(starting_y, ending_y):
+        for j in range(starting_x, ending_x):
 
-            s_image.x = (j)#*(1+template_size[0]))/2
-            s_image.y = (i)#*(1+template_size[1]))/2
+            s_image.x = (j)
+            s_image.y = (i)
            
-            # sub_image = s_image[i:i+template_size[1],  # y
-            #                     j:j+template_size[0]]  # x
             corr = func(s_image, d_template, **kwargs)
             if corr > max_corr:
                 max_corr = corr
