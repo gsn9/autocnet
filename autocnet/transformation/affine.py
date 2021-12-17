@@ -65,13 +65,10 @@ def estimate_affine_transformation(reference_image,
     x_coords = [base_startx, base_startx, base_stopx, base_stopx, bcenter_x]
     y_coords = [base_starty, base_stopy, base_stopy, base_starty, bcenter_y]
 
-    try:
-        # Dispatch to the sensor to get the a priori pixel location in the input image
-        lons, lats = isis.image_to_ground(reference_image.file_name, x_coords, y_coords, allowoutside=True)
-        xs, ys = isis.ground_to_image(moving_image.file_name, lons, lats, allowoutside=True)
-    except Exception as e:
-        print(e.stderr)
-        raise e
+    # Dispatch to the sensor to get the a priori pixel location in the input image
+    lons, lats = isis.image_to_ground(reference_image.file_name, x_coords, y_coords, allowoutside=True)
+    xs, ys = isis.ground_to_image(moving_image.file_name, lons, lats, allowoutside=True)
+
 
     # Check for any coords that do not project between images
     base_gcps = []
